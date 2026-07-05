@@ -15,10 +15,10 @@ export default function HomePage() {
 	return (
 		<>
 			<Head>
-				<title>Video Editor — shadcn/ui</title>
+				<title>Video Editor</title>
 				<meta
 					name="description"
-					content="Open-source timeline video editor built with React, Konva, and shadcn/ui."
+					content="Browser-based timeline video editor built with React, Konva, and Next.js."
 				/>
 			</Head>
 			<VideoEditorProvider>

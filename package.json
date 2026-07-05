@@ -1,17 +1,15 @@
 {
-	"name": "edcn",
-	"version": "0.1.0",
-	"description": "Open-source timeline video editor for Next.js and shadcn/ui",
-	"repository": "https://github.com/shreyvijayvargiya/shadcn-video-editor",
+	"name": "nextjs-video-editor",
+	"version": "1.0.0",
+	"description": "Browser-based timeline video editor for Next.js — commercial source code",
 	"author": "shreyvijayvargiya",
-	"license": "MIT",
-	"private": false,
+	"license": "UNLICENSED",
+	"private": true,
 	"scripts": {
 		"dev": "next dev -p 3000",
 		"build": "next build",
 		"start": "next start",
-		"lint": "next lint",
-		"registry:validate": "npx shadcn@latest registry validate"
+		"lint": "next lint"
 	},
 	"dependencies": {
 		"@dnd-kit/core": "^6.3.1",

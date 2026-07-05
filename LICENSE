@@ -1,21 +1,70 @@
-MIT License
+Commercial Source Code License
 
-Copyright (c) 2026 shreyvijayvargiya
+Copyright (c) 2026 shreyvijayvargiya. All rights reserved.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+This software and associated documentation files (the "Software") are
+licensed, not sold, to you by the copyright holder for use only under the
+terms of this license.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+1. GRANT OF LICENSE
+
+Upon purchase, you are granted a non-exclusive, non-transferable license to
+use, modify, and deploy the Software in your own applications and products,
+subject to the restrictions below.
+
+2. PERMITTED USE
+
+You may:
+- Use the Software in one (1) commercial or personal project (Standard license)
+- Modify the source code for your own use
+- Deploy the Software as part of a web application or SaaS product
+- Create derivative works for your own internal use
+
+3. RESTRICTIONS
+
+You may NOT:
+- Redistribute, resell, sublicense, or share the source code with third parties
+- Publish the source code publicly (including GitHub, GitLab, or similar)
+- Use the Software in more than one distinct product without purchasing an
+  Extended license
+- Remove or alter copyright notices in the source files
+- Use the Software to create a competing template, boilerplate, or source-code
+  product for sale
+
+4. OWNERSHIP
+
+The copyright holder retains all right, title, and interest in the Software.
+This license does not transfer ownership of the Software to you.
+
+5. UPDATES
+
+Updates, if offered, are provided at the discretion of the copyright holder
+and may require a separate purchase or active support period.
+
+6. SUPPORT
+
+Support is provided via the contact method specified at the time of purchase.
+There is no obligation to provide maintenance, bug fixes, or feature updates.
+
+7. WARRANTY DISCLAIMER
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+
+8. LIMITATION OF LIABILITY
+
+IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES, OR
+OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING
+FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+IN THE SOFTWARE.
+
+9. TERMINATION
+
+This license terminates automatically if you breach any term. Upon termination,
+you must destroy all copies of the Software in your possession.
+
+10. CONTACT
+
+For Extended licenses, team licenses, or licensing questions, contact the
+seller through your Gumroad purchase receipt.
