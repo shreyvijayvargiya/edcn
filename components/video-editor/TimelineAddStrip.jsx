@@ -3,8 +3,6 @@ import {
 	Plus,
 	Type,
 	Image as ImageIcon,
-	Video,
-	Music,
 	Square,
 	Star,
 } from "lucide-react";
@@ -22,8 +20,6 @@ import { cn } from "@/lib/utils";
 const ADD_OPTIONS = [
 	{ id: "text", label: "Text", icon: Type, action: "addText" },
 	{ id: "image", label: "Image", icon: ImageIcon, action: "uploadImage" },
-	{ id: "video", label: "Video", icon: Video, action: "uploadVideo" },
-	{ id: "audio", label: "Audio", icon: Music, action: "uploadAudio" },
 	{ id: "shape", label: "Object", icon: Square, action: "addShape" },
 	{ id: "icon", label: "Icon", icon: Star, action: "addIcon" },
 ];

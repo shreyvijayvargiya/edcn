@@ -14,12 +14,8 @@ import {
 	verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Plus } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { useAppDispatch, useAppSelector } from "@/lib/store/hooks";
 import {
-	setActiveScene,
-	addScene,
 	selectLayer,
 	resizeSceneDuration,
 	updateLayerTiming,
@@ -29,7 +25,6 @@ import {
 import {
 	TRACK_META,
 	TIMELINE_TRACK_HEIGHT,
-	getTotalDuration,
 	getLayerClipDuration,
 	layerClipLabel,
 	MIN_SCENE_DURATION,
@@ -88,7 +83,7 @@ function TimeRuler({ totalWidth, totalDuration, pxPerSec, playheadX }) {
 	);
 }
 
-function SceneBlock({ scene, left, width, isActive, pxPerSec, onSelect, onResizeEnd }) {
+function SceneDurationBar({ scene, width, pxPerSec, onResizeEnd }) {
 	const onPointerDown = useDragResize((dx, start) => {
 		const newDur = Math.max(MIN_SCENE_DURATION, start.duration + dx / start.pxPerSec);
 		onResizeEnd(scene.id, newDur);
@@ -96,17 +91,11 @@ function SceneBlock({ scene, left, width, isActive, pxPerSec, onSelect, onResize
 
 	return (
 		<div
-			className={cn(
-				"absolute top-1 bottom-1 border-2 flex items-center overflow-hidden cursor-pointer select-none",
-				isActive
-					? "border-primary bg-primary/20"
-					: "border-border bg-secondary/80 hover:bg-secondary",
-			)}
-			style={{ left, width: Math.max(width, 24) }}
-			onClick={onSelect}
+			className="relative h-8 border-b-2 border-border bg-muted/20 flex items-center px-2 shrink-0"
+			style={{ width: Math.max(width, 400), minWidth: "100%" }}
 		>
-			<span className="text-[10px] font-bold truncate px-2 flex-1">{scene.name}</span>
-			<span className="text-[9px] text-muted-foreground tabular-nums pr-2 shrink-0">
+			<span className="text-[10px] font-bold truncate flex-1">{scene.name}</span>
+			<span className="text-[9px] text-muted-foreground tabular-nums shrink-0 mr-2">
 				{scene.duration.toFixed(1)}s
 			</span>
 			<div
@@ -232,25 +221,13 @@ export default function Timeline() {
 		useAppSelector((s) => s.videoEditor);
 
 	const activeScene = project.scenes.find((s) => s.id === activeSceneId);
-	const totalDuration = getTotalDuration(project.scenes);
-	const sceneTimelineWidth = Math.max(totalDuration * pxPerSec, 400);
 	const trackWidth = Math.max((activeScene?.duration ?? 0) * pxPerSec, 400);
-	const globalPlayheadX = playback.currentTime * pxPerSec;
 	const localPlayheadX = (playback.previewLocalTime || 0) * pxPerSec;
 
 	const displayLayers = useMemo(() => {
 		if (!activeScene) return [];
 		return [...activeScene.layers].reverse();
 	}, [activeScene]);
-
-	const sceneOffsets = useMemo(() => {
-		let acc = 0;
-		return project.scenes.map((s) => {
-			const left = acc;
-			acc += s.duration * pxPerSec;
-			return { scene: s, left, width: s.duration * pxPerSec };
-		});
-	}, [project.scenes, pxPerSec]);
 
 	const sensors = useSensors(
 		useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -263,43 +240,13 @@ export default function Timeline() {
 		const x = e.clientX - rect.left + scrollLeft;
 		if (!activeScene) return;
 		const local = Math.max(0, Math.min(x / pxPerSec, activeScene.duration));
-		let acc = 0;
-		for (const scene of project.scenes) {
-			if (scene.id === activeSceneId) {
-				dispatch(
-					setCurrentTime({
-						globalTime: acc + local,
-						sceneId: scene.id,
-						localTime: local,
-					}),
-				);
-				return;
-			}
-			acc += scene.duration;
-		}
-	};
-
-	const seekGlobal = (e) => {
-		const scrollEl = e.currentTarget.closest("[data-timeline-scroll]");
-		const scrollLeft = scrollEl?.scrollLeft ?? 0;
-		const rect = e.currentTarget.getBoundingClientRect();
-		const x = e.clientX - rect.left + scrollLeft;
-		const t = Math.max(0, Math.min(x / pxPerSec, totalDuration));
-		let acc = 0;
-		for (const scene of project.scenes) {
-			if (t <= acc + scene.duration) {
-				dispatch(setActiveScene(scene.id));
-				dispatch(
-					setCurrentTime({
-						globalTime: t,
-						sceneId: scene.id,
-						localTime: t - acc,
-					}),
-				);
-				return;
-			}
-			acc += scene.duration;
-		}
+		dispatch(
+			setCurrentTime({
+				globalTime: local,
+				sceneId: activeScene.id,
+				localTime: local,
+			}),
+		);
 	};
 
 	const onLayerDragEnd = (event) => {
@@ -317,49 +264,20 @@ export default function Timeline() {
 	};
 
 	return (
-		<div className="h-64 shrink-0 border-t-2 border-border bg-card flex flex-col">
-			{/* Scene rail */}
-			<div className="flex border-b-2 border-border shrink-0 items-center gap-2 px-2">
-				<span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground shrink-0">
-					Scenes
-				</span>
-				<div
-					className="flex-1 overflow-x-auto relative h-10 bg-muted/20 cursor-pointer"
-					data-timeline-scroll
-					onClick={seekGlobal}
-				>
-					<div className="relative h-full" style={{ width: sceneTimelineWidth, minWidth: "100%" }}>
-						{sceneOffsets.map(({ scene, left, width }) => (
-							<SceneBlock
-								key={scene.id}
-								scene={scene}
-								left={left}
-								width={width}
-								pxPerSec={pxPerSec}
-								isActive={scene.id === activeSceneId}
-								onSelect={() => dispatch(setActiveScene(scene.id))}
-								onResizeEnd={(id, dur) =>
-									dispatch(resizeSceneDuration({ sceneId: id, duration: dur }))
-								}
-							/>
-						))}
-						<div
-							className="absolute top-0 bottom-0 w-0.5 bg-primary z-30 pointer-events-none"
-							style={{ left: globalPlayheadX }}
-						/>
-					</div>
+		<div className="h-56 shrink-0 border-t-2 border-border bg-card flex flex-col">
+			{activeScene && (
+				<div className="overflow-x-auto shrink-0" data-timeline-scroll>
+					<SceneDurationBar
+						scene={activeScene}
+						width={trackWidth}
+						pxPerSec={pxPerSec}
+						onResizeEnd={(id, dur) =>
+							dispatch(resizeSceneDuration({ sceneId: id, duration: dur }))
+						}
+					/>
 				</div>
-				<Button
-					size="sm"
-					variant="outline"
-					className="shrink-0 h-8"
-					onClick={() => dispatch(addScene())}
-				>
-					<Plus className="h-3.5 w-3.5" />
-				</Button>
-			</div>
+			)}
 
-			{/* Ruler */}
 			<div className="flex border-b-2 border-border shrink-0 items-center">
 				<div className="flex-1 overflow-x-auto" data-timeline-scroll>
 					<TimeRuler
@@ -371,7 +289,6 @@ export default function Timeline() {
 				</div>
 			</div>
 
-			{/* Layer chips — drag chip vertically to reorder z-index */}
 			<div
 				className="flex-1 min-h-0 overflow-auto relative"
 				data-timeline-scroll

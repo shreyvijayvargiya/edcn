@@ -2,8 +2,6 @@ import { useState } from "react";
 import {
 	Type,
 	Image as ImageIcon,
-	Video,
-	Music,
 	Square,
 	Star,
 	Search,
@@ -17,14 +15,11 @@ import { EDITOR_ICONS } from "@/lib/video-editor/icons";
 import { TEXT_PRESETS } from "@/lib/video-editor/textPresets";
 import { SHAPE_PRESETS, ICON_COLOR_PRESETS } from "@/lib/video-editor/shapePresets";
 import { CANVAS_WIDTH, CANVAS_HEIGHT } from "@/lib/video-editor/constants";
-import { getMediaDuration, roundMediaDuration } from "@/lib/video-editor/media";
 import { cn } from "@/lib/utils";
 
 const TABS = [
 	{ id: "text", label: "Text", icon: Type },
 	{ id: "image", label: "Image", icon: ImageIcon },
-	{ id: "video", label: "Video", icon: Video, upload: true },
-	{ id: "audio", label: "Audio", icon: Music, upload: true },
 	{ id: "shape", label: "Objects", icon: Square },
 	{ id: "icon", label: "Icons", icon: Star },
 ];
@@ -193,9 +188,7 @@ function IconsPanel({ onAddIcon, search }) {
 
 export default function LeftPanel() {
 	const dispatch = useAppDispatch();
-	const { activeSceneId, project } = useAppSelector((s) => s.videoEditor);
-	const canvasW = project.canvas?.width ?? CANVAS_WIDTH;
-	const canvasH = project.canvas?.height ?? CANVAS_HEIGHT;
+	const { activeSceneId } = useAppSelector((s) => s.videoEditor);
 	const [activeTab, setActiveTab] = useState("text");
 	const [search, setSearch] = useState("");
 
@@ -255,97 +248,22 @@ export default function LeftPanel() {
 		});
 	};
 
-	const uploadVideo = () => {
-		openFilePicker("video/*", async (file) => {
-			if (!activeSceneId) return;
-			const url = URL.createObjectURL(file);
-			try {
-				const rawDuration = await getMediaDuration(url, "video");
-				const mediaDuration = roundMediaDuration(rawDuration);
-				dispatch(
-					addLayer({
-						sceneId: activeSceneId,
-						type: "video",
-						mediaDuration,
-						data: {
-							src: url,
-							label: file.name,
-							mediaDuration,
-							muted: false,
-							volume: 1,
-						},
-						overrides: {
-							x: 0,
-							y: 0,
-							width: canvasW,
-							height: canvasH,
-						},
-					}),
-				);
-			} catch {
-				dispatch(
-					addLayer({
-						sceneId: activeSceneId,
-						type: "video",
-						data: { src: url, label: file.name, muted: false, volume: 1 },
-						overrides: { x: 0, y: 0, width: canvasW, height: canvasH },
-					}),
-				);
-			}
-		});
-	};
-
-	const uploadAudio = () => {
-		openFilePicker("audio/*", async (file) => {
-			if (!activeSceneId) return;
-			const url = URL.createObjectURL(file);
-			try {
-				const rawDuration = await getMediaDuration(url, "audio");
-				const mediaDuration = roundMediaDuration(rawDuration);
-				dispatch(
-					addLayer({
-						sceneId: activeSceneId,
-						type: "audio",
-						mediaDuration,
-						data: { src: url, label: file.name, mediaDuration },
-					}),
-				);
-			} catch {
-				dispatch(
-					addLayer({
-						sceneId: activeSceneId,
-						type: "audio",
-						data: { src: url, label: file.name },
-					}),
-				);
-			}
-		});
-	};
-
-	const handleTabClick = (tab) => {
-		if (tab.upload) {
-			if (tab.id === "video") uploadVideo();
-			if (tab.id === "audio") uploadAudio();
-			return;
-		}
-		setActiveTab(tab.id);
-		setSearch("");
-	};
-
 	const showSearch = activeTab === "text" || activeTab === "icon";
 
 	return (
 		<aside className="flex shrink-0 border-r-2 border-border bg-card">
-			{/* Icon rail */}
 			<nav className="w-14 shrink-0 flex flex-col items-center py-2 gap-0.5 border-r-2 border-border bg-muted/20">
 				{TABS.map((tab) => {
 					const Icon = tab.icon;
-					const isActive = !tab.upload && activeTab === tab.id;
+					const isActive = activeTab === tab.id;
 					return (
 						<button
 							key={tab.id}
 							type="button"
-							onClick={() => handleTabClick(tab)}
+							onClick={() => {
+								setActiveTab(tab.id);
+								setSearch("");
+							}}
 							className={cn(
 								"w-11 flex flex-col items-center justify-center gap-0.5 py-2 rounded-md text-[9px] font-semibold transition-colors",
 								isActive
@@ -361,40 +279,36 @@ export default function LeftPanel() {
 				})}
 			</nav>
 
-			{/* Content panel — hidden for video/audio (upload-only) */}
-			{activeTab !== "video" && activeTab !== "audio" && (
-				<div className="w-56 flex flex-col overflow-hidden">
-					{showSearch && (
-						<div className="p-2 border-b-2 border-border shrink-0">
-							<div className="relative">
-								<Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-								<Input
-									value={search}
-									onChange={(e) => setSearch(e.target.value)}
-									placeholder={
-										activeTab === "text"
-											? "Search fonts and combinations"
-											: "Search icons"
-									}
-									className="h-8 pl-8 text-xs"
-								/>
-							</div>
+			<div className="w-56 flex flex-col overflow-hidden">
+				{showSearch && (
+					<div className="p-2 border-b-2 border-border shrink-0">
+						<div className="relative">
+							<Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+							<Input
+								value={search}
+								onChange={(e) => setSearch(e.target.value)}
+								placeholder={
+									activeTab === "text"
+										? "Search fonts and combinations"
+										: "Search icons"
+								}
+								className="h-8 pl-8 text-xs"
+							/>
 						</div>
-					)}
-
-					<div className="flex-1 overflow-y-auto min-h-0">
-						{activeTab === "text" && (
-							<TextPanel onAddText={addText} search={search} />
-						)}
-						{activeTab === "image" && <ImagePanel onUpload={uploadImage} />}
-						{activeTab === "shape" && <ShapesPanel onAddShape={addShape} />}
-						{activeTab === "icon" && (
-							<IconsPanel onAddIcon={addIcon} search={search} />
-						)}
 					</div>
-				</div>
-			)}
+				)}
 
+				<div className="flex-1 overflow-y-auto min-h-0">
+					{activeTab === "text" && (
+						<TextPanel onAddText={addText} search={search} />
+					)}
+					{activeTab === "image" && <ImagePanel onUpload={uploadImage} />}
+					{activeTab === "shape" && <ShapesPanel onAddShape={addShape} />}
+					{activeTab === "icon" && (
+						<IconsPanel onAddIcon={addIcon} search={search} />
+					)}
+				</div>
+			</div>
 		</aside>
 	);
 }
