@@ -1,0 +1,84 @@
+{
+	"$schema": "https://ui.shadcn.com/schema/registry.json",
+	"name": "shadcn-video-editor",
+	"homepage": "https://github.com/shreyvijayvargiya/shadcn-video-editor",
+	"items": [
+		{
+			"name": "video-editor",
+			"type": "registry:block",
+			"title": "Video Editor",
+			"description": "Timeline + Konva canvas video editor for Next.js with shadcn/ui",
+			"registryDependencies": [
+				"button",
+				"input",
+				"label",
+				"textarea",
+				"separator",
+				"dropdown-menu"
+			],
+			"dependencies": [
+				"@reduxjs/toolkit@^2",
+				"react-redux@^9",
+				"@dnd-kit/core@^6",
+				"@dnd-kit/sortable@^10",
+				"@dnd-kit/modifiers@^9",
+				"@dnd-kit/utilities@^3",
+				"konva@^9",
+				"react-konva@^18",
+				"react-hotkeys-hook@^5",
+				"lucide-react"
+			],
+			"files": [
+				{ "path": "components/video-editor/VideoEditor.jsx", "type": "registry:component" },
+				{ "path": "components/video-editor/EditorLayout.jsx", "type": "registry:component" },
+				{ "path": "components/video-editor/Toolbar.jsx", "type": "registry:component" },
+				{ "path": "components/video-editor/LeftPanel.jsx", "type": "registry:component" },
+				{ "path": "components/video-editor/CanvasPreview.jsx", "type": "registry:component" },
+				{ "path": "components/video-editor/PropertyPanel.jsx", "type": "registry:component" },
+				{ "path": "components/video-editor/Timeline.jsx", "type": "registry:component" },
+				{ "path": "components/video-editor/TimelineAddStrip.jsx", "type": "registry:component" },
+				{ "path": "components/video-editor/PreviewControls.jsx", "type": "registry:component" },
+				{ "path": "components/video-editor/FrameDimensionSelect.jsx", "type": "registry:component" },
+				{ "path": "components/video-editor/KonvaVideoLayer.jsx", "type": "registry:component" },
+				{ "path": "components/video-editor/AudioPlaybackSync.jsx", "type": "registry:component" },
+				{ "path": "components/video-editor/CanvasHotkeys.jsx", "type": "registry:component" },
+				{ "path": "components/video-editor/StageRefContext.jsx", "type": "registry:component" },
+				{ "path": "components/video-editor/InlineTextEditor.jsx", "type": "registry:component" },
+				{ "path": "components/video-editor/EditorAnimationDropdown.jsx", "type": "registry:component" },
+				{ "path": "lib/store/provider.jsx", "type": "registry:component" },
+				{ "path": "lib/store/store.js", "type": "registry:lib" },
+				{ "path": "lib/store/hooks.js", "type": "registry:lib" },
+				{ "path": "lib/store/slices/videoEditorSlice.js", "type": "registry:lib" },
+				{ "path": "lib/video-editor/animations.js", "type": "registry:lib" },
+				{ "path": "lib/video-editor/constants.js", "type": "registry:lib" },
+				{ "path": "lib/video-editor/defaults.js", "type": "registry:lib" },
+				{ "path": "lib/video-editor/dimensions.js", "type": "registry:lib" },
+				{ "path": "lib/video-editor/gradients.js", "type": "registry:lib" },
+				{ "path": "lib/video-editor/icons.js", "type": "registry:lib" },
+				{ "path": "lib/video-editor/inlineTextEdit.js", "type": "registry:lib" },
+				{ "path": "lib/video-editor/konvaDrag.js", "type": "registry:lib" },
+				{ "path": "lib/video-editor/media.js", "type": "registry:lib" },
+				{ "path": "lib/video-editor/render.js", "type": "registry:lib" },
+				{ "path": "lib/video-editor/shapePresets.js", "type": "registry:lib" },
+				{ "path": "lib/video-editor/textPresets.js", "type": "registry:lib" },
+				{ "path": "lib/video-editor/timeline.js", "type": "registry:lib" },
+				{ "path": "lib/video-editor/useTimelineLayerActions.js", "type": "registry:lib" },
+				{ "path": "lib/video-editor/utils.js", "type": "registry:lib" }
+			]
+		},
+		{
+			"name": "video-editor-page",
+			"type": "registry:page",
+			"title": "Video Editor Page",
+			"description": "Example Next.js page with dynamic import and Redux provider",
+			"registryDependencies": ["video-editor"],
+			"files": [
+				{
+					"path": "pages/index.js",
+					"type": "registry:page",
+					"target": "pages/editor.js"
+				}
+			]
+		}
+	]
+}
