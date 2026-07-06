@@ -1,14 +1,14 @@
 import { useHotkeys } from "react-hotkeys-hook";
 import { useAppDispatch, useAppSelector } from "@/lib/store/hooks";
-import { deleteLayer } from "@/lib/store/slices/videoEditorSlice";
+import { deleteLayers } from "@/lib/store/slices/videoEditorSlice";
 
-/** Delete selected layer from anywhere in the editor (timeline or canvas selection) */
+/** Delete selected layer(s) from anywhere in the editor */
 export default function EditorLayerHotkeys() {
 	const dispatch = useAppDispatch();
-	const { activeSceneId, selectedLayerId, playback } = useAppSelector(
+	const { activeSceneId, selectedLayerIds, playback } = useAppSelector(
 		(s) => s.videoEditor,
 	);
-	const canDelete = !!selectedLayerId && !!activeSceneId;
+	const canDelete = selectedLayerIds.length > 0 && !!activeSceneId;
 	const blocked = playback.isPlaying || playback.isRendering;
 
 	useHotkeys(
@@ -16,10 +16,10 @@ export default function EditorLayerHotkeys() {
 		(e) => {
 			if (!canDelete || blocked) return;
 			e.preventDefault();
-			dispatch(deleteLayer({ sceneId: activeSceneId, layerId: selectedLayerId }));
+			dispatch(deleteLayers({ sceneId: activeSceneId, layerIds: selectedLayerIds }));
 		},
 		{ enableOnFormTags: false },
-		[canDelete, blocked, activeSceneId, selectedLayerId, dispatch],
+		[canDelete, blocked, activeSceneId, selectedLayerIds, dispatch],
 	);
 
 	return null;

@@ -1,4 +1,4 @@
-import { useRef, useCallback, useMemo, useState } from "react";
+import { useRef, useCallback, useMemo, useState, useEffect } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import {
 	DndContext,
@@ -22,6 +22,8 @@ import {
 	setActiveScene,
 	addScene,
 	selectLayer,
+	toggleLayerSelection,
+	setTimelineScrollAnchor,
 	resizeSceneDuration,
 	updateLayerTiming,
 	setCurrentTime,
@@ -181,7 +183,7 @@ function LayerClip({
 			style={{ left, width: Math.max(width, 20) }}
 			onClick={(e) => {
 				e.stopPropagation();
-				onSelect(layer.id);
+				onSelect(layer.id, e);
 			}}
 		>
 			<div
@@ -274,8 +276,9 @@ function SortableTrackRow({ layer, scene, sceneId, pxPerSec, isSelected, onSelec
 export default function Timeline() {
 	const dispatch = useAppDispatch();
 	const timelineRef = useRef(null);
+	const layerTrackScrollRef = useRef(null);
 	const [timelineFocused, setTimelineFocused] = useState(false);
-	const { project, activeSceneId, selectedLayerId, playback, pxPerSec } =
+	const { project, activeSceneId, selectedLayerIds, playback, pxPerSec } =
 		useAppSelector((s) => s.videoEditor);
 
 	usePlaybackTick();
@@ -286,6 +289,7 @@ export default function Timeline() {
 			? playback.renderSnapshot.sceneId
 			: activeSceneId;
 	const activeScene = project.scenes.find((s) => s.id === displaySceneId);
+	const layerPxPerSec = activeScene?.timelinePxPerSec ?? pxPerSec;
 
 	useHotkeys(
 		"space",
@@ -317,8 +321,31 @@ export default function Timeline() {
 	const focusTimeline = useCallback(() => {
 		timelineRef.current?.focus({ preventScroll: true });
 	}, []);
+
+	const handleLayerSelect = useCallback(
+		(layerId, e) => {
+			if (e.ctrlKey || e.metaKey) {
+				dispatch(toggleLayerSelection(layerId));
+			} else {
+				dispatch(selectLayer(layerId));
+			}
+		},
+		[dispatch],
+	);
+
+	const scrollLayerTrackToTime = useCallback(
+		(timeSec, behavior = "smooth") => {
+			const scrollEl = layerTrackScrollRef.current;
+			if (!scrollEl) return;
+			const x = timeSec * layerPxPerSec;
+			const target = Math.max(0, x - scrollEl.clientWidth / 2);
+			scrollEl.scrollTo({ left: target, behavior });
+		},
+		[layerPxPerSec],
+	);
+
 	const sceneTimelineWidth = Math.max(totalDuration * pxPerSec, 400);
-	const trackWidth = Math.max((activeScene?.duration ?? 0) * pxPerSec, 400);
+	const trackWidth = Math.max((activeScene?.duration ?? 0) * layerPxPerSec, 400);
 	const displayGlobalTime =
 		playback.isRendering && playback.renderSnapshot
 			? playback.renderSnapshot.globalTime
@@ -327,8 +354,24 @@ export default function Timeline() {
 		playback.isRendering && playback.renderSnapshot
 			? playback.renderSnapshot.localTime
 			: playback.previewLocalTime || 0;
+
+	useEffect(() => {
+		const anchor = playback.timelineScrollAnchor;
+		if (!anchor || !activeScene) return;
+		if (anchor === "start") scrollLayerTrackToTime(0);
+		else if (anchor === "end") scrollLayerTrackToTime(activeScene.duration);
+		else scrollLayerTrackToTime(displayLocalTime);
+		dispatch(setTimelineScrollAnchor(null));
+	}, [
+		playback.timelineScrollAnchor,
+		activeScene,
+		displayLocalTime,
+		scrollLayerTrackToTime,
+		dispatch,
+	]);
+
 	const globalPlayheadX = displayGlobalTime * pxPerSec;
-	const localPlayheadX = displayLocalTime * pxPerSec;
+	const localPlayheadX = displayLocalTime * layerPxPerSec;
 
 	const displayLayers = useMemo(() => {
 		if (!activeScene) return [];
@@ -354,7 +397,7 @@ export default function Timeline() {
 		const rect = e.currentTarget.getBoundingClientRect();
 		const x = e.clientX - rect.left + scrollLeft;
 		if (!activeScene) return;
-		const local = Math.max(0, Math.min(x / pxPerSec, activeScene.duration));
+		const local = Math.max(0, Math.min(x / layerPxPerSec, activeScene.duration));
 		let acc = 0;
 		for (const scene of project.scenes) {
 			if (scene.id === activeSceneId) {
@@ -528,11 +571,15 @@ export default function Timeline() {
 					</div>
 
 					<div
+						ref={layerTrackScrollRef}
 						className="flex-1 min-h-0 overflow-auto relative px-3 pb-2 bg-card"
 						data-timeline-scroll
 						onClick={(e) => {
 							focusTimeline();
 							seekToTime(e);
+							if (!e.ctrlKey && !e.metaKey) {
+								dispatch(selectLayer(null));
+							}
 						}}
 					>
 						<div style={{ width: trackWidth, minWidth: "100%" }}>
@@ -556,9 +603,9 @@ export default function Timeline() {
 												layer={layer}
 												scene={activeScene}
 												sceneId={activeSceneId}
-												pxPerSec={pxPerSec}
-												isSelected={layer.id === selectedLayerId}
-												onSelect={(id) => dispatch(selectLayer(id))}
+												pxPerSec={layerPxPerSec}
+												isSelected={selectedLayerIds.includes(layer.id)}
+												onSelect={handleLayerSelect}
 												onTimingEnd={(layerId, startTime, clipDuration) =>
 													dispatch(
 														updateLayerTiming({

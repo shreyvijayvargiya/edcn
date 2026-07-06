@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
 	Type,
 	Image as ImageIcon,
@@ -15,7 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAppDispatch, useAppSelector } from "@/lib/store/hooks";
-import { addLayer } from "@/lib/store/slices/videoEditorSlice";
+import { addLayer, clearCommandLeftTab } from "@/lib/store/slices/videoEditorSlice";
 import { EDITOR_ICONS } from "@/lib/video-editor/icons";
 import { ICON_COMBOS } from "@/lib/video-editor/iconCombos";
 import { TEXT_PRESETS } from "@/lib/video-editor/textPresets";
@@ -30,6 +30,8 @@ import {
 	loadImageDimensions,
 	fitImageOnCanvas,
 } from "@/lib/video-editor/stockImages";
+import { filterStockVideos } from "@/lib/video-editor/stockVideos";
+import { filterStockAudio } from "@/lib/video-editor/stockAudio";
 import { cn } from "@/lib/utils";
 import { updateScene } from "@/lib/store/slices/videoEditorSlice";
 import BackgroundPanel, { sceneBackgroundFromGradient } from "./BackgroundPanel";
@@ -46,8 +48,8 @@ const WORKSPACE_TABS = [
 const EDITOR_TABS = [
 	{ id: "text", label: "Text", icon: Type },
 	{ id: "image", label: "Image", icon: ImageIcon },
-	{ id: "video", label: "Video", icon: Video, upload: true },
-	{ id: "audio", label: "Audio", icon: Music, upload: true },
+	{ id: "video", label: "Video", icon: Video },
+	{ id: "audio", label: "Audio", icon: Music },
 	{ id: "shape", label: "Objects", icon: Square },
 	{ id: "background", label: "Background", icon: Paintbrush },
 	{ id: "icon", label: "Icons", icon: Star },
@@ -179,6 +181,101 @@ function ImagePanel({ onUpload, onAddStock, search }) {
 	);
 }
 
+function VideoPanel({ onUpload, onAddStock, search }) {
+	const videos = filterStockVideos(search);
+
+	return (
+		<div className="flex flex-col gap-3 p-3">
+			<Button variant="outline" className="w-full h-10 gap-2 shrink-0" onClick={onUpload}>
+				<Video className="h-4 w-4 text-muted-foreground" />
+				<span className="text-xs font-medium">Upload video</span>
+			</Button>
+
+			<div className="flex items-center justify-between gap-2">
+				<p className="text-sm font-bold text-foreground">Sample videos</p>
+				<span className="text-[10px] text-muted-foreground tabular-nums">{videos.length}</span>
+			</div>
+			<p className="text-[10px] text-muted-foreground leading-relaxed -mt-2">
+				Click to add a clip to the canvas. Edit text and export on top.
+			</p>
+
+			{videos.length === 0 ? (
+				<p className="text-xs text-muted-foreground py-4 text-center">No videos match your search.</p>
+			) : (
+				<div className="grid grid-cols-1 gap-2">
+					{videos.map((item) => (
+						<button
+							key={item.id}
+							type="button"
+							onClick={() => onAddStock(item)}
+							className="group relative aspect-video overflow-hidden rounded-lg border-2 border-border bg-muted/30 hover:border-primary transition-colors text-left"
+							title={item.label}
+						>
+							<video
+								src={item.src}
+								muted
+								playsInline
+								preload="metadata"
+								className="absolute inset-0 h-full w-full object-cover transition-transform group-hover:scale-105"
+							/>
+							<span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2 py-1.5 text-[10px] font-semibold text-white truncate">
+								{item.label}
+							</span>
+						</button>
+					))}
+				</div>
+			)}
+		</div>
+	);
+}
+
+function AudioPanel({ onUpload, onAddStock, search }) {
+	const tracks = filterStockAudio(search);
+
+	return (
+		<div className="flex flex-col gap-3 p-3">
+			<Button variant="outline" className="w-full h-10 gap-2 shrink-0" onClick={onUpload}>
+				<Music className="h-4 w-4 text-muted-foreground" />
+				<span className="text-xs font-medium">Upload audio</span>
+			</Button>
+
+			<div className="flex items-center justify-between gap-2">
+				<p className="text-sm font-bold text-foreground">Sample audio</p>
+				<span className="text-[10px] text-muted-foreground tabular-nums">{tracks.length}</span>
+			</div>
+			<p className="text-[10px] text-muted-foreground leading-relaxed -mt-2">
+				Add sound effects or music beds to the timeline.
+			</p>
+
+			{tracks.length === 0 ? (
+				<p className="text-xs text-muted-foreground py-4 text-center">No audio matches your search.</p>
+			) : (
+				<div className="flex flex-col gap-2">
+					{tracks.map((item) => (
+						<button
+							key={item.id}
+							type="button"
+							onClick={() => onAddStock(item)}
+							className="flex items-center gap-3 rounded-lg border-2 border-border px-2.5 py-2 hover:border-primary hover:bg-muted/20 transition-colors text-left"
+							title={item.label}
+						>
+							<div className="h-10 w-10 shrink-0 rounded-md border border-border bg-primary/10 flex items-center justify-center">
+								<Music className="h-4 w-4 text-primary" />
+							</div>
+							<div className="min-w-0 flex-1">
+								<p className="text-xs font-semibold text-foreground truncate">{item.label}</p>
+								<p className="text-[10px] text-muted-foreground capitalize">
+									{item.tags.slice(0, 2).join(" · ")}
+								</p>
+							</div>
+						</button>
+					))}
+				</div>
+			)}
+		</div>
+	);
+}
+
 function ShapesPanel({ onAddShape }) {
 	return (
 		<div className="flex flex-col gap-3 p-3">
@@ -278,12 +375,21 @@ function IconsPanel({ onAddIcon, onAddIconCombo, search }) {
 
 export default function LeftPanel() {
 	const dispatch = useAppDispatch();
-	const { activeSceneId, project } = useAppSelector((s) => s.videoEditor);
+	const { activeSceneId, project, ui } = useAppSelector((s) => s.videoEditor);
+	const commandLeftTab = ui?.leftTab;
+	const commandNonce = ui?.commandNonce ?? 0;
 	const activeScene = project.scenes.find((s) => s.id === activeSceneId);
 	const canvasW = project.canvas?.width ?? CANVAS_WIDTH;
 	const canvasH = project.canvas?.height ?? CANVAS_HEIGHT;
 	const [activeTab, setActiveTab] = useState("workspace");
 	const [search, setSearch] = useState("");
+
+	useEffect(() => {
+		if (!commandLeftTab) return;
+		setActiveTab(commandLeftTab);
+		setSearch("");
+		dispatch(clearCommandLeftTab());
+	}, [commandLeftTab, commandNonce, dispatch]);
 
 	const addText = (preset) => {
 		if (!activeSceneId) return;
@@ -388,6 +494,51 @@ export default function LeftPanel() {
 		}
 	};
 
+	const addStockVideo = async (item) => {
+		if (!activeSceneId) return;
+		let mediaDuration = item.duration;
+		try {
+			const rawDuration = await getMediaDuration(item.src, "video");
+			mediaDuration = roundMediaDuration(rawDuration);
+		} catch {
+			/* use catalog duration */
+		}
+		dispatch(
+			addLayer({
+				sceneId: activeSceneId,
+				type: "video",
+				mediaDuration,
+				data: {
+					src: item.src,
+					label: item.label,
+					mediaDuration,
+					muted: false,
+					volume: 1,
+				},
+				overrides: { x: 0, y: 0, width: canvasW, height: canvasH },
+			}),
+		);
+	};
+
+	const addStockAudio = async (item) => {
+		if (!activeSceneId) return;
+		let mediaDuration = item.duration;
+		try {
+			const rawDuration = await getMediaDuration(item.src, "audio");
+			mediaDuration = roundMediaDuration(rawDuration);
+		} catch {
+			/* use catalog duration */
+		}
+		dispatch(
+			addLayer({
+				sceneId: activeSceneId,
+				type: "audio",
+				mediaDuration,
+				data: { src: item.src, label: item.label, mediaDuration },
+			}),
+		);
+	};
+
 	const uploadVideo = () => {
 		openFilePicker("video/*", async (file) => {
 			if (!activeSceneId) return;
@@ -465,20 +616,16 @@ export default function LeftPanel() {
 	};
 
 	const handleTabClick = (tab) => {
-		if (tab.upload) {
-			if (tab.id === "video") uploadVideo();
-			if (tab.id === "audio") uploadAudio();
-			return;
-		}
 		setActiveTab(tab.id);
 		setSearch("");
 	};
 
 	const showSearch =
-		activeTab === "text" || activeTab === "icon" || activeTab === "image";
-
-	const showContentPanel =
-		activeTab !== "video" && activeTab !== "audio";
+		activeTab === "text" ||
+		activeTab === "icon" ||
+		activeTab === "image" ||
+		activeTab === "video" ||
+		activeTab === "audio";
 
 	const renderTabButton = (tab, isActive) => {
 		const Icon = isActive && tab.activeIcon ? tab.activeIcon : tab.icon;
@@ -515,7 +662,7 @@ export default function LeftPanel() {
 
 				<div className="flex-1 min-h-0 overflow-y-auto flex flex-col items-center py-1 gap-0.5">
 					{EDITOR_TABS.map((tab) => {
-						const isActive = !tab.upload && activeTab === tab.id;
+						const isActive = activeTab === tab.id;
 						return renderTabButton(tab, isActive);
 					})}
 				</div>
@@ -523,9 +670,8 @@ export default function LeftPanel() {
 				<LeftPanelUserSection />
 			</nav>
 
-			{/* Content panel — hidden for video/audio (upload-only) */}
-			{showContentPanel && (
-				<div className="flex-1 min-w-0 flex flex-col overflow-hidden">
+			{/* Content panel */}
+			<div className="flex-1 min-w-0 flex flex-col overflow-hidden">
 					{showSearch && (
 						<div className="px-2 pb-2 border-b-2 border-border shrink-0">
 							<div className="relative">
@@ -538,7 +684,11 @@ export default function LeftPanel() {
 											? "Search fonts and combinations"
 											: activeTab === "image"
 												? "Search stock photos"
-												: "Search icons"
+												: activeTab === "video"
+													? "Search sample videos"
+													: activeTab === "audio"
+														? "Search sample audio"
+														: "Search icons"
 									}
 									className="h-8 pl-8 text-xs"
 								/>
@@ -559,6 +709,20 @@ export default function LeftPanel() {
 								search={search}
 							/>
 						)}
+						{activeTab === "video" && (
+							<VideoPanel
+								onUpload={uploadVideo}
+								onAddStock={addStockVideo}
+								search={search}
+							/>
+						)}
+						{activeTab === "audio" && (
+							<AudioPanel
+								onUpload={uploadAudio}
+								onAddStock={addStockAudio}
+								search={search}
+							/>
+						)}
 						{activeTab === "shape" && <ShapesPanel onAddShape={addShape} />}
 						{activeTab === "background" && (
 							<BackgroundPanel
@@ -576,7 +740,6 @@ export default function LeftPanel() {
 						)}
 					</div>
 				</div>
-			)}
 
 		</div>
 	);

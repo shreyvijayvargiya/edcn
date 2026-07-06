@@ -513,7 +513,7 @@ function LayerNode({
 
 export default function CanvasPreview() {
 	const dispatch = useAppDispatch();
-	const { project, activeSceneId, selectedLayerId, playback } = useAppSelector(
+	const { project, activeSceneId, selectedLayerIds, selectedLayerId, playback } = useAppSelector(
 		(s) => s.videoEditor,
 	);
 	const stageRef = useStageRef();
@@ -617,13 +617,13 @@ export default function CanvasPreview() {
 	useEffect(() => {
 		const tr = transformerRef.current;
 		if (!tr) return;
-		if (interactive && selectedLayerId && !editingLayerId && nodeRefs.current[selectedLayerId]) {
+		if (interactive && selectedLayerIds.length === 1 && selectedLayerId && !editingLayerId && nodeRefs.current[selectedLayerId]) {
 			tr.nodes([nodeRefs.current[selectedLayerId]]);
 		} else {
 			tr.nodes([]);
 		}
 		tr.getLayer()?.batchDraw();
-	}, [selectedLayerId, interactive, editingLayerId]);
+	}, [selectedLayerIds, selectedLayerId, interactive, editingLayerId]);
 
 	const handleStageClick = (e) => {
 		if (e.target === e.target.getStage()) {
@@ -715,7 +715,7 @@ export default function CanvasPreview() {
 									applyAnimation={applyAnimation}
 									isVideoPlaying={isVideoPlaying}
 									audioUnlocked={audioUnlocked}
-									isSelected={interactive && layer.id === selectedLayerId}
+									isSelected={interactive && selectedLayerIds.includes(layer.id)}
 									isEditing={editingLayerId === layer.id}
 									onSelect={() => {
 										if (!interactive) return;

@@ -494,12 +494,31 @@ function LayerAppearanceSection({ layer, sceneId, dispatch }) {
 
 export default function PropertyPanel() {
 	const dispatch = useAppDispatch();
-	const { project, activeSceneId, selectedLayerId } = useAppSelector(
+	const { project, activeSceneId, selectedLayerIds, selectedLayerId } = useAppSelector(
 		(s) => s.videoEditor,
 	);
 
 	const scene = project.scenes.find((s) => s.id === activeSceneId);
-	const layer = scene?.layers.find((l) => l.id === selectedLayerId);
+	const layer =
+		selectedLayerIds.length === 1
+			? scene?.layers.find((l) => l.id === selectedLayerId)
+			: null;
+
+	if (selectedLayerIds.length > 1) {
+		return (
+			<div className="flex h-full w-full flex-col overflow-y-auto bg-card">
+				<div className="px-3 py-2.5 border-b border-border bg-muted/20">
+					<p className="text-sm font-semibold text-foreground">
+						{selectedLayerIds.length} layers selected
+					</p>
+					<p className="text-[10px] text-muted-foreground mt-0.5">
+						Ctrl+click timeline clips to multi-select · Delete removes all
+					</p>
+				</div>
+				<SceneTimingSection scene={scene} dispatch={dispatch} />
+			</div>
+		);
+	}
 
 	if (!layer) {
 		return (
@@ -510,7 +529,7 @@ export default function PropertyPanel() {
 						Background & scene settings
 					</p>
 				</div>
-				<PanelSection title="Background" defaultOpen>
+				<PanelSection title="Background" defaultOpen sectionId="background">
 					<CanvasProperties canvas={project.canvas} dispatch={dispatch} />
 				</PanelSection>
 				<SceneTimingSection scene={scene} dispatch={dispatch} />

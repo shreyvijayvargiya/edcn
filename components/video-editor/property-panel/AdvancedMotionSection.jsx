@@ -91,7 +91,7 @@ export function AdvancedMotionSection({ layer, scene, sceneId, layerId }) {
 	};
 
 	return (
-		<PanelSection title="Advanced motion" icon={Wand2} defaultOpen={false}>
+		<PanelSection title="Advanced motion" icon={Wand2} defaultOpen={false} sectionId="advanced-motion">
 			<p className="text-[10px] text-muted-foreground leading-relaxed">
 				Keyframe transforms over the clip, or swap icon/image frames — e.g. closed folder → open.
 			</p>

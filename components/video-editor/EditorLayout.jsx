@@ -11,10 +11,12 @@ import AudioPlaybackSync from "./AudioPlaybackSync";
 import EditorHistoryHotkeys from "./EditorHistoryHotkeys";
 import EditorLayerHotkeys from "./EditorLayerHotkeys";
 import { useEditorPanelSizes } from "@/lib/video-editor/useEditorPanelSizes";
+import CommandSearch from "./CommandSearch";
 
 export default function EditorLayout() {
 	const [leftOpen, setLeftOpen] = useState(false);
 	const [rightOpen, setRightOpen] = useState(false);
+	const [commandOpen, setCommandOpen] = useState(false);
 	const {
 		leftWidth,
 		rightWidth,
@@ -29,8 +31,14 @@ export default function EditorLayout() {
 			<AudioPlaybackSync />
 			<EditorHistoryHotkeys />
 			<EditorLayerHotkeys />
+			<CommandSearch
+				open={commandOpen}
+				onOpenChange={setCommandOpen}
+				openLeftPanel={() => setLeftOpen(true)}
+				openRightPanel={() => setRightOpen(true)}
+			/>
 			<div className="flex flex-col h-dvh overflow-hidden bg-background text-foreground">
-				<Toolbar />
+				<Toolbar onOpenCommandSearch={() => setCommandOpen(true)} />
 				<div className="relative flex flex-1 min-h-0 pb-[17.5rem]">
 					<SidebarOverlay
 						side="left"

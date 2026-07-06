@@ -4,6 +4,7 @@ import {
 	Redo2,
 	Clapperboard,
 	Play,
+	Search,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,8 +30,9 @@ import FrameDimensionSelect from "./FrameDimensionSelect";
 import ThemeToggle from "@/components/theme/ThemeToggle";
 import PreviewVideoModal from "./PreviewVideoModal";
 import ExportMenu from "./ExportMenu";
+import CommandSearch from "./CommandSearch";
 
-export default function Toolbar() {
+export default function Toolbar({ onOpenCommandSearch }) {
 	const dispatch = useAppDispatch();
 	const stageRef = useStageRef();
 	const { project, playback, history } = useAppSelector((s) => s.videoEditor);
@@ -95,6 +97,19 @@ export default function Toolbar() {
 				/>
 
 				<div className="flex-1" />
+
+				<Button
+					variant="outline"
+					size="sm"
+					className="h-8 gap-2 text-xs shrink-0 hidden sm:flex"
+					onClick={() => onOpenCommandSearch?.()}
+				>
+					<Search className="h-3.5 w-3.5" />
+					Search
+					<kbd className="ml-1 rounded border border-border bg-muted px-1 py-0.5 text-[9px] font-mono">
+						⌘K
+					</kbd>
+				</Button>
 
 				<Button
 					variant="ghost"

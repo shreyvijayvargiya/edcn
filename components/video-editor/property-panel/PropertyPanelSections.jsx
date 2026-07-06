@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
+import { useAppDispatch, useAppSelector } from "@/lib/store/hooks";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -14,12 +15,17 @@ import {
 	MIN_TRANSITION_DURATION,
 	MAX_TRANSITION_DURATION,
 } from "@/lib/video-editor/animations";
-import { updateLayer, updateLayerTiming, updateScene } from "@/lib/store/slices/videoEditorSlice";
+import { updateLayer, updateLayerTiming, updateScene, setTimelineScrollAnchor, clearCommandFocusSection } from "@/lib/store/slices/videoEditorSlice";
 import {
 	IMAGE_OBJECT_FITS,
 	IMAGE_OBJECT_POSITIONS,
 	BORDER_STYLES,
 } from "@/lib/video-editor/imageLayout";
+import {
+	MIN_TIMELINE_PX_PER_SEC,
+	MAX_TIMELINE_PX_PER_SEC,
+	DEFAULT_TIMELINE_PX_PER_SEC,
+} from "@/lib/video-editor/timeline";
 import {
 	Sparkles,
 	Clapperboard,
@@ -31,6 +37,7 @@ import {
 	Clock,
 	Layers,
 	FileText,
+	ZoomIn,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -116,11 +123,32 @@ function NumInput({ label, value, onCommit, min = -9999, max = 9999, step }) {
 	);
 }
 
-export function PanelSection({ title, icon: Icon, children, defaultOpen = true, className }) {
+export function PanelSection({
+	title,
+	icon: Icon,
+	children,
+	defaultOpen = true,
+	className,
+	sectionId,
+}) {
 	const [open, setOpen] = useState(defaultOpen);
+	const rootRef = useRef(null);
+	const dispatch = useAppDispatch();
+	const focusSection = useAppSelector((s) => s.videoEditor.ui.focusSection);
+	const commandNonce = useAppSelector((s) => s.videoEditor.ui.commandNonce);
+
+	useEffect(() => {
+		if (!sectionId || focusSection !== sectionId) return;
+		setOpen(true);
+		const t = window.setTimeout(() => {
+			rootRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+			dispatch(clearCommandFocusSection());
+		}, 50);
+		return () => window.clearTimeout(t);
+	}, [focusSection, commandNonce, sectionId, dispatch]);
 
 	return (
-		<div className={cn("border-b border-border", className)}>
+		<div ref={rootRef} data-command-section={sectionId} className={cn("border-b border-border", className)}>
 			<button
 				type="button"
 				onClick={() => setOpen((v) => !v)}
@@ -143,7 +171,7 @@ export function PanelSection({ title, icon: Icon, children, defaultOpen = true, 
 /** Figma-style W/H and X/Y grid at the top */
 export function FrameSection({ layer, onPatch }) {
 	return (
-		<PanelSection title="Frame" icon={Maximize2} defaultOpen>
+		<PanelSection title="Frame" icon={Maximize2} defaultOpen sectionId="frame">
 			<div className="grid grid-cols-2 gap-2">
 				<NumInput
 					label="W"
@@ -180,7 +208,7 @@ export function FrameSection({ layer, onPatch }) {
 
 export function TransformSection({ layer, onPatch }) {
 	return (
-		<PanelSection title="Transform" icon={Move} defaultOpen>
+		<PanelSection title="Transform" icon={Move} defaultOpen sectionId="transform">
 			<RangeField
 				label="Rotation"
 				value={Math.round(layer.rotation ?? 0)}
@@ -241,7 +269,7 @@ export function TimingSection({ layer, scene, sceneId, layerId, dispatch }) {
 	const groups = getLayerAnimationGroups(layer.type);
 
 	return (
-		<PanelSection title="Timing" icon={Clock} defaultOpen>
+		<PanelSection title="Timing" icon={Clock} defaultOpen sectionId="timing">
 			<div className="space-y-2 rounded-md border border-border bg-muted/30 p-2">
 				<TimingCheckbox
 					label="Pin start"
@@ -329,6 +357,7 @@ export function SceneTimingSection({ scene, dispatch }) {
 	if (!scene) return null;
 	const enter = scene.enterAnimation ?? { preset: "none", duration: 0.6 };
 	const tr = scene.transition ?? { type: "none", duration: 0.5 };
+	const timelineZoom = scene.timelinePxPerSec ?? DEFAULT_TIMELINE_PX_PER_SEC;
 
 	const patchEnter = (patch) =>
 		dispatch(
@@ -337,9 +366,76 @@ export function SceneTimingSection({ scene, dispatch }) {
 	const patchTransition = (patch) =>
 		dispatch(updateScene({ sceneId: scene.id, changes: { transition: { ...tr, ...patch } } }));
 
+	const patchTimelineZoom = (timelinePxPerSec) => {
+		dispatch(
+			updateScene({
+				sceneId: scene.id,
+				changes: {
+					timelinePxPerSec: Math.max(
+						MIN_TIMELINE_PX_PER_SEC,
+						Math.min(MAX_TIMELINE_PX_PER_SEC, timelinePxPerSec),
+					),
+				},
+			}),
+		);
+		dispatch(setTimelineScrollAnchor("playhead"));
+	};
+
+	const focusTimeline = (anchor) => {
+		dispatch(setTimelineScrollAnchor(anchor));
+	};
+
 	return (
-		<PanelSection title="Scene" icon={Layers} defaultOpen={false}>
+		<PanelSection title="Scene" icon={Layers} defaultOpen={false} sectionId="scene">
 			<div className="space-y-3">
+				<div className="space-y-2 rounded-md border border-border bg-muted/30 p-2">
+					<p className="text-[10px] font-semibold text-muted-foreground flex items-center gap-1.5">
+						<ZoomIn className="h-3 w-3" />
+						Timeline zoom · {scene.name}
+					</p>
+					<RangeField
+						label="Zoom"
+						value={timelineZoom}
+						min={MIN_TIMELINE_PX_PER_SEC}
+						max={MAX_TIMELINE_PX_PER_SEC}
+						step={4}
+						formatValue={(v) => `${Math.round((v / DEFAULT_TIMELINE_PX_PER_SEC) * 100)}%`}
+						onChange={patchTimelineZoom}
+					/>
+					<p className="text-[9px] text-muted-foreground leading-relaxed">
+						Per-scene layer track zoom. Higher values make clips wider and easier to trim.
+					</p>
+					<div className="flex gap-1 pt-0.5">
+						<Button
+							type="button"
+							size="sm"
+							variant="outline"
+							className="flex-1 text-[10px] h-7"
+							onClick={() => focusTimeline("start")}
+						>
+							Go to start
+						</Button>
+						<Button
+							type="button"
+							size="sm"
+							variant="outline"
+							className="flex-1 text-[10px] h-7"
+							onClick={() => focusTimeline("playhead")}
+						>
+							Go to playhead
+						</Button>
+						<Button
+							type="button"
+							size="sm"
+							variant="outline"
+							className="flex-1 text-[10px] h-7"
+							onClick={() => focusTimeline("end")}
+						>
+							Go to end
+						</Button>
+					</div>
+				</div>
+
 				<div className="space-y-2">
 					<p className="text-[10px] font-semibold text-muted-foreground flex items-center gap-1.5">
 						<Film className="h-3 w-3" />
@@ -399,7 +495,7 @@ export function AppearanceStyleSection({
 	showCornerRadius = true,
 }) {
 	return (
-		<PanelSection title="Appearance" icon={Palette} defaultOpen>
+		<PanelSection title="Appearance" icon={Palette} defaultOpen sectionId="appearance">
 			{showCornerRadius && !showObjectFit && (
 				<RangeField
 					label="Corner radius"
@@ -593,7 +689,7 @@ export function LayerPanelHeader({ layer }) {
 
 export function ContentSection({ title = "Content", children }) {
 	return (
-		<PanelSection title={title} icon={FileText} defaultOpen>
+		<PanelSection title={title} icon={FileText} defaultOpen sectionId="content">
 			{children}
 		</PanelSection>
 	);
