@@ -7,7 +7,7 @@ import {
 	Square,
 	Star,
 	Search,
-	Sparkles,
+	Paintbrush,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,6 +28,8 @@ import {
 	fitImageOnCanvas,
 } from "@/lib/video-editor/stockImages";
 import { cn } from "@/lib/utils";
+import { updateScene } from "@/lib/store/slices/videoEditorSlice";
+import BackgroundPanel, { sceneBackgroundFromGradient } from "./BackgroundPanel";
 
 const TABS = [
 	{ id: "text", label: "Text", icon: Type },
@@ -35,6 +37,7 @@ const TABS = [
 	{ id: "video", label: "Video", icon: Video, upload: true },
 	{ id: "audio", label: "Audio", icon: Music, upload: true },
 	{ id: "shape", label: "Objects", icon: Square },
+	{ id: "background", label: "Background", icon: Paintbrush },
 	{ id: "icon", label: "Icons", icon: Star },
 ];
 
@@ -264,6 +267,7 @@ function IconsPanel({ onAddIcon, onAddIconCombo, search }) {
 export default function LeftPanel() {
 	const dispatch = useAppDispatch();
 	const { activeSceneId, project } = useAppSelector((s) => s.videoEditor);
+	const activeScene = project.scenes.find((s) => s.id === activeSceneId);
 	const canvasW = project.canvas?.width ?? CANVAS_WIDTH;
 	const canvasH = project.canvas?.height ?? CANVAS_HEIGHT;
 	const [activeTab, setActiveTab] = useState("text");
@@ -439,6 +443,15 @@ export default function LeftPanel() {
 		});
 	};
 
+	const applySceneBackground = (background) => {
+		if (!activeSceneId) return;
+		dispatch(updateScene({ sceneId: activeSceneId, changes: { background } }));
+	};
+
+	const applyGradientBackground = (preset) => {
+		applySceneBackground(sceneBackgroundFromGradient(preset));
+	};
+
 	const handleTabClick = (tab) => {
 		if (tab.upload) {
 			if (tab.id === "video") uploadVideo();
@@ -514,6 +527,13 @@ export default function LeftPanel() {
 							/>
 						)}
 						{activeTab === "shape" && <ShapesPanel onAddShape={addShape} />}
+						{activeTab === "background" && (
+							<BackgroundPanel
+								scene={activeScene}
+								onApplyGradient={applyGradientBackground}
+								onApplyPattern={applySceneBackground}
+							/>
+						)}
 						{activeTab === "icon" && (
 							<IconsPanel
 								onAddIcon={addIcon}

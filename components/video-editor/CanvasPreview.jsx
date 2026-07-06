@@ -4,7 +4,7 @@ import { useAppDispatch, useAppSelector } from "@/lib/store/hooks";
 import { selectLayer, updateLayer, duplicateLayerInPlace } from "@/lib/store/slices/videoEditorSlice";
 import { CANVAS_WIDTH, CANVAS_HEIGHT } from "@/lib/video-editor/constants";
 import { isLayerActiveAtTime } from "@/lib/video-editor/timeline";
-import { buildBackgroundFill } from "@/lib/video-editor/gradients";
+import { buildSceneBackgroundFill, resolveSceneBackground } from "@/lib/video-editor/sceneBackground";
 import {
 	computeLayerAnimationState,
 	computeSceneTransitionState,
@@ -474,9 +474,17 @@ export default function CanvasPreview() {
 
 	const canvasW = project.canvas?.width ?? CANVAS_WIDTH;
 	const canvasH = project.canvas?.height ?? CANVAS_HEIGHT;
-	const bgFill = buildBackgroundFill(project.canvas?.background, canvasW, canvasH);
-
 	const activeScene = project.scenes.find((s) => s.id === activeSceneId);
+	const bgFill = useMemo(
+		() =>
+			buildSceneBackgroundFill(
+				resolveSceneBackground(activeScene, project.canvas),
+				canvasW,
+				canvasH,
+			),
+		[activeScene, project.canvas, canvasW, canvasH],
+	);
+
 	const previewTime = playback.previewLocalTime ?? 0;
 	const interactive = !playback.isPlaying && !playback.isRendering;
 	const applyAnimation = playback.isPlaying || playback.isRendering;
