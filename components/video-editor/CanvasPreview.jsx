@@ -17,6 +17,7 @@ import CanvasHotkeys from "./CanvasHotkeys";
 import KonvaVideoLayer from "./KonvaVideoLayer";
 import KonvaMediaFrame from "./KonvaMediaFrame";
 import InlineTextEditor from "./InlineTextEditor";
+import { computeMotionState } from "@/lib/video-editor/motion";
 import { getCachedImage, loadKonvaImage } from "@/lib/video-editor/imageCache";
 
 function useKonvaImage(src) {
@@ -46,14 +47,30 @@ function useKonvaImage(src) {
 	return image;
 }
 
-function KonvaImageLayer({ layer, anim, isSelected, onSelect, onChange, registerRef, interactive, onAltDragDuplicate }) {
+function KonvaImageLayer({
+	layer,
+	anim,
+	effective,
+	frameSwap,
+	isSelected,
+	onSelect,
+	onChange,
+	registerRef,
+	interactive,
+	onAltDragDuplicate,
+}) {
 	const image = useKonvaImage(layer.data?.src);
+	const frame2Src = layer.motion?.frameSwap?.frame2;
+	const image2 = useKonvaImage(frameSwap && frame2Src ? frame2Src : null);
 
 	return (
 		<KonvaMediaFrame
 			layer={layer}
 			anim={anim}
+			effective={effective}
 			mediaElement={image}
+			secondaryMediaElement={image2}
+			frameSwap={frameSwap}
 			onSelect={onSelect}
 			onChange={onChange}
 			registerRef={registerRef}
@@ -63,9 +80,36 @@ function KonvaImageLayer({ layer, anim, isSelected, onSelect, onChange, register
 	);
 }
 
+function IconGlyph({ data, icon, opacity = 1 }) {
+	return (
+		<Text
+			width={data.width ?? 60}
+			height={data.height ?? 60}
+			text={icon}
+			fontSize={data.fontSize ?? 48}
+			fill={data.fill}
+			align="center"
+			verticalAlign="middle"
+			letterSpacing={data.letterSpacing ?? 0}
+			stroke={data.stroke || undefined}
+			strokeWidth={data.strokeWidth ?? 0}
+			shadowColor={
+				data.shadowBlur > 0 ? data.shadowColor || "rgba(0,0,0,0.4)" : undefined
+			}
+			shadowBlur={data.shadowBlur ?? 0}
+			shadowOffsetX={data.shadowOffsetX ?? 0}
+			shadowOffsetY={data.shadowOffsetY ?? 0}
+			opacity={opacity}
+			listening={false}
+		/>
+	);
+}
+
 function KonvaIconLayer({
 	layer,
 	anim,
+	effective,
+	frameSwap,
 	isSelected,
 	onSelect,
 	onChange,
@@ -79,12 +123,21 @@ function KonvaIconLayer({
 		layer,
 		anim,
 		onChange,
+		{
+			getPosition: effective
+				? () => layerAnimProps(layer, anim, effective)
+				: undefined,
+		},
 	);
 
 	const ringWidth = data.ringWidth ?? 0;
 	const ringOffset = data.ringOffset ?? 4;
 	const borderWidth = data.borderWidth ?? 0;
 	const ringPad = ringWidth > 0 ? ringOffset + ringWidth / 2 : 0;
+	const frame2Icon = layer.motion?.frameSwap?.frame2;
+	const glyphData = { ...data, width: layer.width, height: layer.height };
+	const f1Opacity = frameSwap ? frameSwap.frame1Opacity : 1;
+	const f2Opacity = frameSwap ? frameSwap.frame2Opacity : 0;
 
 	const handleTransformEnd = (e) => {
 		const node = e.target;
@@ -147,25 +200,14 @@ function KonvaIconLayer({
 					listening={false}
 				/>
 			)}
-			<Text
-				width={layer.width}
-				height={layer.height}
-				text={data.icon}
-				fontSize={data.fontSize ?? 48}
-				fill={data.fill}
-				align="center"
-				verticalAlign="middle"
-				letterSpacing={data.letterSpacing ?? 0}
-				stroke={data.stroke || undefined}
-				strokeWidth={data.strokeWidth ?? 0}
-				shadowColor={
-					data.shadowBlur > 0 ? data.shadowColor || "rgba(0,0,0,0.4)" : undefined
-				}
-				shadowBlur={data.shadowBlur ?? 0}
-				shadowOffsetX={data.shadowOffsetX ?? 0}
-				shadowOffsetY={data.shadowOffsetY ?? 0}
-				listening={false}
-			/>
+			{frameSwap && frame2Icon ? (
+				<>
+					<IconGlyph data={glyphData} icon={data.icon} opacity={f1Opacity} />
+					<IconGlyph data={glyphData} icon={frame2Icon} opacity={f2Opacity} />
+				</>
+			) : (
+				<IconGlyph data={glyphData} icon={data.icon} />
+			)}
 			<LayerHitRect width={layer.width} height={layer.height} />
 		</Group>
 	);
@@ -250,20 +292,28 @@ function LayerNode({
 }) {
 	const { data } = layer;
 	const altDrag = konvaAltDragHandlers(layer, interactive, onAltDragDuplicate);
+	const motionState = computeMotionState(layer, previewTime);
+	const effective = motionState.effective;
+	const frameSwap = motionState.frameSwap;
 	const anim = applyAnimation
 		? computeLayerAnimationState(layer, previewTime)
 		: computeLayerAnimationState(layer, Infinity);
 	const isCenteredShape =
 		layer.type === "shape" &&
 		(data.shape === "circle" || data.shape === "ellipse");
-	const shapePos = layer.type === "shape" ? shapeAnimProps(layer, anim) : null;
+	const shapePos =
+		layer.type === "shape" ? shapeAnimProps(layer, anim, effective) : null;
 	const { x, y, pos, dragHandlers, selectHandlers } = useKonvaDragHandlers(
 		layer,
 		anim,
 		onChange,
 		{
 			centered: isCenteredShape,
-			getPosition: shapePos ? () => shapePos : undefined,
+			getPosition: shapePos
+				? () => shapePos
+				: effective
+					? () => layerAnimProps(layer, anim, effective)
+					: undefined,
 		},
 	);
 
@@ -329,6 +379,8 @@ function LayerNode({
 			<KonvaImageLayer
 				layer={layer}
 				anim={anim}
+				effective={effective}
+				frameSwap={frameSwap}
 				isSelected={isSelected}
 				onSelect={onSelect}
 				onChange={onChange}
@@ -344,6 +396,7 @@ function LayerNode({
 			<KonvaVideoLayer
 				layer={layer}
 				anim={anim}
+				effective={effective}
 				sceneDuration={sceneDuration}
 				previewTime={previewTime}
 				isVideoPlaying={isVideoPlaying}
@@ -380,6 +433,8 @@ function LayerNode({
 			<KonvaIconLayer
 				layer={layer}
 				anim={anim}
+				effective={effective}
+				frameSwap={frameSwap}
 				isSelected={isSelected}
 				onSelect={onSelect}
 				onChange={onChange}

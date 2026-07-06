@@ -33,6 +33,7 @@ import {
 	ContentSection,
 	Button,
 } from "./property-panel/PropertyPanelSections";
+import { AdvancedMotionSection } from "./property-panel/AdvancedMotionSection";
 
 function CanvasProperties({ canvas, dispatch }) {
 	const bg = canvas?.background ?? DEFAULT_CANVAS_BACKGROUND;
@@ -548,6 +549,13 @@ export default function PropertyPanel() {
 				sceneId={activeSceneId}
 				layerId={layer.id}
 				dispatch={dispatch}
+			/>
+
+			<AdvancedMotionSection
+				layer={layer}
+				scene={scene}
+				sceneId={activeSceneId}
+				layerId={layer.id}
 			/>
 
 			<SceneTimingSection scene={scene} dispatch={dispatch} />

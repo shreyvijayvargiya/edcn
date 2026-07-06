@@ -9,6 +9,7 @@ import KonvaMediaFrame from "./KonvaMediaFrame";
 export default function KonvaVideoLayer({
 	layer,
 	anim,
+	effective = null,
 	sceneDuration,
 	previewTime,
 	isVideoPlaying,
@@ -123,6 +124,7 @@ export default function KonvaVideoLayer({
 		<KonvaMediaFrame
 			layer={layer}
 			anim={anim}
+			effective={effective}
 			mediaElement={videoEl}
 			placeholderFill={placeholderFill}
 			mediaImageRef={imageRef}

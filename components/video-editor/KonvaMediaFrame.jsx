@@ -10,6 +10,7 @@ import {
 	computeImageDrawRect,
 	clipRoundedRect,
 } from "@/lib/video-editor/imageLayout";
+import { layerAnimProps } from "@/lib/video-editor/animations";
 import { mediaElementSize } from "@/lib/video-editor/mediaLayerStyle";
 
 /**
@@ -18,7 +19,10 @@ import { mediaElementSize } from "@/lib/video-editor/mediaLayerStyle";
 export default function KonvaMediaFrame({
 	layer,
 	anim,
+	effective = null,
 	mediaElement,
+	secondaryMediaElement = null,
+	frameSwap = null,
 	placeholderFill = "rgba(0,0,0,0.08)",
 	mediaImageRef,
 	onSelect,
@@ -33,6 +37,11 @@ export default function KonvaMediaFrame({
 		layer,
 		anim,
 		onChange,
+		{
+			getPosition: effective
+				? () => layerAnimProps(layer, anim, effective)
+				: undefined,
+		},
 	);
 
 	const borderRadius = data.borderRadius ?? 0;
@@ -51,6 +60,20 @@ export default function KonvaMediaFrame({
 				data.objectPosition ?? "center",
 			)
 		: { x: 0, y: 0, width: layer.width, height: layer.height };
+
+	const size2 = mediaElementSize(secondaryMediaElement);
+	const draw2 = size2
+		? computeImageDrawRect(
+				size2,
+				layer.width,
+				layer.height,
+				data.objectFit ?? "cover",
+				data.objectPosition ?? "center",
+			)
+		: draw;
+
+	const f1Opacity = frameSwap?.frame1Opacity ?? 1;
+	const f2Opacity = frameSwap?.frame2Opacity ?? 0;
 
 	const handleTransformEnd = (e) => {
 		const node = e.target;
@@ -126,6 +149,7 @@ export default function KonvaMediaFrame({
 						y={draw.y}
 						width={draw.width}
 						height={draw.height}
+						opacity={f1Opacity}
 						listening={false}
 					/>
 				) : (
@@ -136,6 +160,17 @@ export default function KonvaMediaFrame({
 						listening={false}
 					/>
 				)}
+				{frameSwap && secondaryMediaElement ? (
+					<Image
+						image={secondaryMediaElement}
+						x={draw2.x}
+						y={draw2.y}
+						width={draw2.width}
+						height={draw2.height}
+						opacity={f2Opacity}
+						listening={false}
+					/>
+				) : null}
 			</Group>
 
 			{borderWidth > 0 && (
