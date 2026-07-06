@@ -8,6 +8,9 @@ import {
 	Star,
 	Search,
 	Paintbrush,
+	Folder,
+	FolderOpen,
+	Library,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,8 +33,17 @@ import {
 import { cn } from "@/lib/utils";
 import { updateScene } from "@/lib/store/slices/videoEditorSlice";
 import BackgroundPanel, { sceneBackgroundFromGradient } from "./BackgroundPanel";
+import WorkspacePanel from "./WorkspacePanel";
+import AssetsPanel from "./AssetsPanel";
+import LeftPanelUserSection from "./LeftPanelUserSection";
+import { Separator } from "@/components/ui/separator";
 
-const TABS = [
+const WORKSPACE_TABS = [
+	{ id: "workspace", label: "Projects", icon: Folder, activeIcon: FolderOpen },
+	{ id: "assets", label: "Assets", icon: Library },
+];
+
+const EDITOR_TABS = [
 	{ id: "text", label: "Text", icon: Type },
 	{ id: "image", label: "Image", icon: ImageIcon },
 	{ id: "video", label: "Video", icon: Video, upload: true },
@@ -270,7 +282,7 @@ export default function LeftPanel() {
 	const activeScene = project.scenes.find((s) => s.id === activeSceneId);
 	const canvasW = project.canvas?.width ?? CANVAS_WIDTH;
 	const canvasH = project.canvas?.height ?? CANVAS_HEIGHT;
-	const [activeTab, setActiveTab] = useState("text");
+	const [activeTab, setActiveTab] = useState("workspace");
 	const [search, setSearch] = useState("");
 
 	const addText = (preset) => {
@@ -465,35 +477,54 @@ export default function LeftPanel() {
 	const showSearch =
 		activeTab === "text" || activeTab === "icon" || activeTab === "image";
 
+	const showContentPanel =
+		activeTab !== "video" && activeTab !== "audio";
+
+	const renderTabButton = (tab, isActive) => {
+		const Icon = isActive && tab.activeIcon ? tab.activeIcon : tab.icon;
+		return (
+			<button
+				key={tab.id}
+				type="button"
+				onClick={() => handleTabClick(tab)}
+				className={cn(
+					"w-11 flex flex-col items-center justify-center gap-0.5 py-2 rounded-md text-[9px] font-semibold transition-colors",
+					isActive
+						? "bg-primary/15 text-primary"
+						: "text-muted-foreground hover:bg-muted hover:text-foreground",
+				)}
+				title={tab.label}
+			>
+				<Icon className="h-5 w-5" />
+				<span className="leading-none">{tab.label}</span>
+			</button>
+		);
+	};
+
 	return (
 		<div className="flex h-full w-full min-h-0 bg-card">
 			{/* Icon rail */}
-			<nav className="w-14 shrink-0 flex flex-col items-center py-2 gap-0.5 border-r-2 border-border bg-muted/20">
-				{TABS.map((tab) => {
-					const Icon = tab.icon;
-					const isActive = !tab.upload && activeTab === tab.id;
-					return (
-						<button
-							key={tab.id}
-							type="button"
-							onClick={() => handleTabClick(tab)}
-							className={cn(
-								"w-11 flex flex-col items-center justify-center gap-0.5 py-2 rounded-md text-[9px] font-semibold transition-colors",
-								isActive
-									? "bg-primary/15 text-primary"
-									: "text-muted-foreground hover:bg-muted hover:text-foreground",
-							)}
-							title={tab.label}
-						>
-							<Icon className="h-5 w-5" />
-							<span className="leading-none">{tab.label}</span>
-						</button>
-					);
-				})}
+			<nav className="w-14 shrink-0 flex flex-col min-h-0 border-r-2 border-border bg-muted/20">
+				<div className="flex flex-col items-center py-2 gap-0.5 shrink-0">
+					{WORKSPACE_TABS.map((tab) => {
+						const isActive = activeTab === tab.id;
+						return renderTabButton(tab, isActive);
+					})}
+					<Separator className="w-8 my-1" />
+				</div>
+
+				<div className="flex-1 min-h-0 overflow-y-auto flex flex-col items-center py-1 gap-0.5">
+					{EDITOR_TABS.map((tab) => {
+						const isActive = !tab.upload && activeTab === tab.id;
+						return renderTabButton(tab, isActive);
+					})}
+				</div>
+
+				<LeftPanelUserSection />
 			</nav>
 
 			{/* Content panel — hidden for video/audio (upload-only) */}
-			{activeTab !== "video" && activeTab !== "audio" && (
+			{showContentPanel && (
 				<div className="flex-1 min-w-0 flex flex-col overflow-hidden">
 					{showSearch && (
 						<div className="px-2 pb-2 border-b-2 border-border shrink-0">
@@ -516,6 +547,8 @@ export default function LeftPanel() {
 					)}
 
 					<div className="flex-1 overflow-y-auto min-h-0">
+						{activeTab === "workspace" && <WorkspacePanel />}
+						{activeTab === "assets" && <AssetsPanel />}
 						{activeTab === "text" && (
 							<TextPanel onAddText={addText} search={search} />
 						)}
