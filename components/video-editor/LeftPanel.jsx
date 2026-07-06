@@ -14,10 +14,19 @@ import { Input } from "@/components/ui/input";
 import { useAppDispatch, useAppSelector } from "@/lib/store/hooks";
 import { addLayer } from "@/lib/store/slices/videoEditorSlice";
 import { EDITOR_ICONS } from "@/lib/video-editor/icons";
+import { ICON_COMBOS } from "@/lib/video-editor/iconCombos";
 import { TEXT_PRESETS } from "@/lib/video-editor/textPresets";
 import { SHAPE_PRESETS, ICON_COLOR_PRESETS } from "@/lib/video-editor/shapePresets";
 import { CANVAS_WIDTH, CANVAS_HEIGHT } from "@/lib/video-editor/constants";
 import { getMediaDuration, roundMediaDuration } from "@/lib/video-editor/media";
+import { getTextPresetTileClassName } from "@/lib/video-editor/inlineTextEdit";
+import {
+	filterStockImages,
+	stockImageSrcUrl,
+	stockImageThumbUrl,
+	loadImageDimensions,
+	fitImageOnCanvas,
+} from "@/lib/video-editor/stockImages";
 import { cn } from "@/lib/utils";
 
 const TABS = [
@@ -58,10 +67,6 @@ function TextPanel({ onAddText, search }) {
 					Add a text box
 				</Button>
 			)}
-			<Button variant="outline" className="w-full justify-start gap-2 h-10" disabled>
-				<Sparkles className="h-4 w-4" />
-				Magic Write
-			</Button>
 
 			{combos.length > 0 && (
 				<>
@@ -72,7 +77,10 @@ function TextPanel({ onAddText, search }) {
 								key={preset.id}
 								type="button"
 								onClick={() => onAddText(preset)}
-								className="aspect-square border-2 border-border rounded-lg bg-muted/30 hover:border-primary hover:bg-primary/5 transition-colors flex flex-col items-center justify-center p-2 gap-0.5 overflow-hidden"
+								className={cn(
+									"aspect-square border-2 border-border rounded-lg hover:border-primary transition-colors flex flex-col items-center justify-center p-2 gap-0.5 overflow-hidden",
+									getTextPresetTileClassName(preset.preview, preset.subPreview),
+								)}
 							>
 								{preset.subPreview ? (
 									<>
@@ -106,17 +114,52 @@ function TextPanel({ onAddText, search }) {
 	);
 }
 
-function ImagePanel({ onUpload }) {
+function ImagePanel({ onUpload, onAddStock, search }) {
+	const images = filterStockImages(search);
+
 	return (
 		<div className="flex flex-col gap-3 p-3">
-			<p className="text-sm font-bold text-foreground">Images</p>
-			<Button variant="outline" className="w-full h-24 flex-col gap-2" onClick={onUpload}>
-				<ImageIcon className="h-6 w-6 text-muted-foreground" />
-				<span className="text-xs">Upload image</span>
+			<Button variant="outline" className="w-full h-10 gap-2 shrink-0" onClick={onUpload}>
+				<ImageIcon className="h-4 w-4 text-muted-foreground" />
+				<span className="text-xs font-medium">Upload image</span>
 			</Button>
-			<p className="text-[10px] text-muted-foreground leading-relaxed">
-				Upload PNG, JPG, or WebP. The image is added as a layer on the canvas.
+
+			<div className="flex items-center justify-between gap-2">
+				<p className="text-sm font-bold text-foreground">Stock photos</p>
+				<span className="text-[10px] text-muted-foreground tabular-nums">
+					{images.length}
+				</span>
+			</div>
+			<p className="text-[10px] text-muted-foreground leading-relaxed -mt-2">
+				Free photos via Picsum. Click to add to canvas.
 			</p>
+
+			{images.length === 0 ? (
+				<p className="text-xs text-muted-foreground py-4 text-center">No photos match your search.</p>
+			) : (
+				<div className="grid grid-cols-2 gap-2">
+					{images.map((item) => (
+						<button
+							key={item.id}
+							type="button"
+							onClick={() => onAddStock(item)}
+							className="group relative aspect-[4/3] overflow-hidden rounded-lg border-2 border-border bg-muted/30 hover:border-primary transition-colors text-left"
+							title={item.label}
+						>
+							<img
+								src={stockImageThumbUrl(item)}
+								alt={item.label}
+								loading="lazy"
+								decoding="async"
+								className="absolute inset-0 h-full w-full object-cover transition-transform group-hover:scale-105"
+							/>
+							<span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2 py-1.5 text-[10px] font-semibold text-white truncate">
+								{item.label}
+							</span>
+						</button>
+					))}
+				</div>
+			)}
 		</div>
 	);
 }
@@ -151,13 +194,40 @@ function ShapesPanel({ onAddShape }) {
 	);
 }
 
-function IconsPanel({ onAddIcon, search }) {
+function IconsPanel({ onAddIcon, onAddIconCombo, search }) {
 	const [color, setColor] = useState(ICON_COLOR_PRESETS[0]);
 	const filtered = EDITOR_ICONS.filter((icon) => !search || icon.includes(search));
+	const filteredCombos = ICON_COMBOS.filter(
+		(c) => !search || c.label.toLowerCase().includes(search.toLowerCase()) || c.icon.includes(search),
+	);
 
 	return (
 		<div className="flex flex-col gap-3 p-3">
-			<p className="text-sm font-bold text-foreground">Icons</p>
+			{filteredCombos.length > 0 && (
+				<>
+					<p className="text-sm font-bold text-foreground">Icon combinations</p>
+					<div className="grid grid-cols-4 gap-1.5">
+						{filteredCombos.map((combo) => (
+							<button
+								key={combo.id}
+								type="button"
+								onClick={() => onAddIconCombo(combo)}
+								className="aspect-square border-2 border-border rounded-lg bg-muted/30 hover:border-primary hover:bg-primary/5 transition-colors flex flex-col items-center justify-center gap-0.5 p-1"
+								title={combo.label}
+							>
+								<span className="text-2xl leading-none" style={{ color: combo.fill }}>
+									{combo.icon}
+								</span>
+								<span className="text-[8px] font-medium text-muted-foreground truncate w-full text-center">
+									{combo.label}
+								</span>
+							</button>
+						))}
+					</div>
+				</>
+			)}
+
+			<p className="text-sm font-bold text-foreground">All icons</p>
 			<div className="flex flex-wrap gap-1.5">
 				{ICON_COLOR_PRESETS.map((c) => (
 					<button
@@ -247,12 +317,59 @@ export default function LeftPanel() {
 		);
 	};
 
+	const addIconCombo = (combo) => {
+		if (!activeSceneId) return;
+		const size = combo.fontSize ?? 48;
+		dispatch(
+			addLayer({
+				sceneId: activeSceneId,
+				type: "icon",
+				data: { icon: combo.icon, fill: combo.fill, fontSize: size },
+				overrides: {
+					x: CANVAS_WIDTH / 2 - size / 2,
+					y: CANVAS_HEIGHT / 2 - size / 2,
+				},
+			}),
+		);
+	};
+
 	const uploadImage = () => {
 		openFilePicker("image/*", (file) => {
 			if (!activeSceneId) return;
 			const url = URL.createObjectURL(file);
 			dispatch(addLayer({ sceneId: activeSceneId, type: "image", data: { src: url } }));
 		});
+	};
+
+	const addStockImage = async (item) => {
+		if (!activeSceneId) return;
+		const src = stockImageSrcUrl(item);
+		try {
+			const { width, height } = await loadImageDimensions(src);
+			const fit = fitImageOnCanvas(width, height, canvasW, canvasH);
+			dispatch(
+				addLayer({
+					sceneId: activeSceneId,
+					type: "image",
+					data: { src },
+					overrides: fit,
+				}),
+			);
+		} catch {
+			dispatch(
+				addLayer({
+					sceneId: activeSceneId,
+					type: "image",
+					data: { src },
+					overrides: {
+						x: Math.round(canvasW * 0.1),
+						y: Math.round(canvasH * 0.15),
+						width: Math.round(canvasW * 0.8),
+						height: Math.round(canvasH * 0.35),
+					},
+				}),
+			);
+		}
 	};
 
 	const uploadVideo = () => {
@@ -332,10 +449,11 @@ export default function LeftPanel() {
 		setSearch("");
 	};
 
-	const showSearch = activeTab === "text" || activeTab === "icon";
+	const showSearch =
+		activeTab === "text" || activeTab === "icon" || activeTab === "image";
 
 	return (
-		<aside className="flex shrink-0 border-r-2 border-border bg-card">
+		<div className="flex h-full w-full min-h-0 bg-card">
 			{/* Icon rail */}
 			<nav className="w-14 shrink-0 flex flex-col items-center py-2 gap-0.5 border-r-2 border-border bg-muted/20">
 				{TABS.map((tab) => {
@@ -363,9 +481,9 @@ export default function LeftPanel() {
 
 			{/* Content panel — hidden for video/audio (upload-only) */}
 			{activeTab !== "video" && activeTab !== "audio" && (
-				<div className="w-56 flex flex-col overflow-hidden">
+				<div className="flex-1 min-w-0 flex flex-col overflow-hidden">
 					{showSearch && (
-						<div className="p-2 border-b-2 border-border shrink-0">
+						<div className="px-2 pb-2 border-b-2 border-border shrink-0">
 							<div className="relative">
 								<Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
 								<Input
@@ -374,7 +492,9 @@ export default function LeftPanel() {
 									placeholder={
 										activeTab === "text"
 											? "Search fonts and combinations"
-											: "Search icons"
+											: activeTab === "image"
+												? "Search stock photos"
+												: "Search icons"
 									}
 									className="h-8 pl-8 text-xs"
 								/>
@@ -386,15 +506,25 @@ export default function LeftPanel() {
 						{activeTab === "text" && (
 							<TextPanel onAddText={addText} search={search} />
 						)}
-						{activeTab === "image" && <ImagePanel onUpload={uploadImage} />}
+						{activeTab === "image" && (
+							<ImagePanel
+								onUpload={uploadImage}
+								onAddStock={addStockImage}
+								search={search}
+							/>
+						)}
 						{activeTab === "shape" && <ShapesPanel onAddShape={addShape} />}
 						{activeTab === "icon" && (
-							<IconsPanel onAddIcon={addIcon} search={search} />
+							<IconsPanel
+								onAddIcon={addIcon}
+								onAddIconCombo={addIconCombo}
+								search={search}
+							/>
 						)}
 					</div>
 				</div>
 			)}
 
-		</aside>
+		</div>
 	);
 }

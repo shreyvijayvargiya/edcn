@@ -5,7 +5,7 @@ import { VideoEditorProvider } from "@/lib/store/provider";
 const VideoEditor = dynamic(() => import("@/components/video-editor/VideoEditor"), {
 	ssr: false,
 	loading: () => (
-		<div className="h-dvh flex items-center justify-center bg-background text-muted-foreground text-sm">
+		<div className="h-dvh flex items-center justify-center text-muted-foreground text-sm">
 			Loading editor…
 		</div>
 	),

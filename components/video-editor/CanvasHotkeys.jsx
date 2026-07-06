@@ -2,7 +2,6 @@ import { useHotkeys } from "react-hotkeys-hook";
 import { useAppDispatch, useAppSelector } from "@/lib/store/hooks";
 import {
 	togglePlayback,
-	deleteLayer,
 	moveLayerZIndex,
 	setAudioUnlocked,
 	copyLayer,
@@ -50,17 +49,6 @@ export default function CanvasHotkeys({ enabled }) {
 		},
 		{ enabled: enabled && !!clipboardLayer },
 		[enabled, activeSceneId, clipboardLayer, dispatch],
-	);
-
-	useHotkeys(
-		"delete, backspace",
-		(e) => {
-			if (!selectedLayerId || !activeSceneId) return;
-			e.preventDefault();
-			dispatch(deleteLayer({ sceneId: activeSceneId, layerId: selectedLayerId }));
-		},
-		{ enabled: enabled && !!selectedLayerId },
-		[enabled, selectedLayerId, activeSceneId, dispatch],
 	);
 
 	useHotkeys(

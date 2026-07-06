@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Image, Rect } from "react-konva";
 import { getLayerClipDuration } from "@/lib/video-editor/timeline";
-import { konvaAltDragHandlers } from "@/lib/video-editor/konvaDrag";
-import { layerAnimProps } from "@/lib/video-editor/animations";
+import KonvaMediaFrame from "./KonvaMediaFrame";
 
 /**
  * Renders HTML5 video in Konva, synced to timeline previewLocalTime.
@@ -13,7 +11,7 @@ export default function KonvaVideoLayer({
 	anim,
 	sceneDuration,
 	previewTime,
-	isPlaying,
+	isVideoPlaying,
 	audioUnlocked,
 	isSelected,
 	onSelect,
@@ -33,8 +31,6 @@ export default function KonvaVideoLayer({
 	const clipDuration = getLayerClipDuration(layer, sceneDuration);
 	const clipLocalTime = Math.max(0, previewTime - startTime);
 	const shouldMute = layerMuted || !audioUnlocked;
-	const altDrag = konvaAltDragHandlers(layer, interactive, onAltDragDuplicate);
-	const pos = layerAnimProps(layer, anim ?? { opacityMult: 1, offsetX: 0, offsetY: 0, scaleX: 1, scaleY: 1 });
 
 	useEffect(() => {
 		if (!src) {
@@ -85,7 +81,7 @@ export default function KonvaVideoLayer({
 		const dur = Number.isFinite(videoEl.duration) ? videoEl.duration : clipDuration;
 		const seekTo = Math.min(Math.max(0, clipLocalTime), Math.max(0, dur - 0.05));
 
-		if (!isPlaying) {
+		if (!isVideoPlaying) {
 			videoEl.pause();
 			if (Math.abs(videoEl.currentTime - seekTo) > 0.05) {
 				try {
@@ -106,10 +102,10 @@ export default function KonvaVideoLayer({
 			}
 		}
 		videoEl.play().catch(() => {});
-	}, [videoEl, isPlaying, clipLocalTime, clipDuration, shouldMute]);
+	}, [videoEl, isVideoPlaying, clipLocalTime, clipDuration, shouldMute]);
 
 	useEffect(() => {
-		if (!videoEl || !isPlaying) return;
+		if (!videoEl || !isVideoPlaying) return;
 		let rafId;
 		const frame = () => {
 			imageRef.current?.getLayer()?.batchDraw();
@@ -117,74 +113,24 @@ export default function KonvaVideoLayer({
 		};
 		rafId = requestAnimationFrame(frame);
 		return () => cancelAnimationFrame(rafId);
-	}, [videoEl, isPlaying]);
+	}, [videoEl, isVideoPlaying]);
 
-	const setRef = (node) => {
-		imageRef.current = node;
-		registerRef?.(node);
-	};
-
-	if (!src || loadError || !videoEl) {
-		return (
-			<Rect
-				ref={setRef}
-				x={pos.x}
-				y={pos.y}
-				width={layer.width}
-				height={layer.height}
-				scaleX={pos.scaleX}
-				scaleY={pos.scaleY}
-				rotation={pos.rotation}
-				opacity={pos.opacity}
-				visible={layer.visible}
-				fill={loadError ? "rgba(239,68,68,0.35)" : "rgba(59,130,246,0.35)"}
-				cornerRadius={8}
-				stroke={isSelected ? "#ea580c" : "#52525b"}
-				strokeWidth={isSelected ? 2 : 1}
-				dash={[6, 4]}
-				draggable={interactive && !layer.locked}
-				onClick={onSelect}
-				onTap={onSelect}
-				{...altDrag}
-				onDragEnd={(e) => onChange({ x: e.target.x(), y: e.target.y() })}
-			/>
-		);
-	}
+	const placeholderFill = loadError
+		? "rgba(239,68,68,0.35)"
+		: "rgba(59,130,246,0.35)";
 
 	return (
-		<Image
-			ref={setRef}
-			image={videoEl}
-			x={pos.x}
-			y={pos.y}
-			width={layer.width}
-			height={layer.height}
-			scaleX={pos.scaleX}
-			scaleY={pos.scaleY}
-			rotation={pos.rotation}
-			opacity={pos.opacity}
-			visible={layer.visible}
-			draggable={interactive && !layer.locked}
-			onClick={onSelect}
-			onTap={onSelect}
-			{...altDrag}
-			onDragEnd={(e) => onChange({ x: e.target.x(), y: e.target.y() })}
-			onTransformEnd={(e) => {
-				const node = e.target;
-				const scaleX = node.scaleX();
-				const scaleY = node.scaleY();
-				onChange({
-					x: node.x(),
-					y: node.y(),
-					width: Math.max(20, node.width() * scaleX),
-					height: Math.max(20, node.height() * scaleY),
-					rotation: node.rotation(),
-				});
-				node.scaleX(1);
-				node.scaleY(1);
-			}}
-			stroke={isSelected ? "#ea580c" : undefined}
-			strokeWidth={isSelected ? 2 : 0}
+		<KonvaMediaFrame
+			layer={layer}
+			anim={anim}
+			mediaElement={videoEl}
+			placeholderFill={placeholderFill}
+			mediaImageRef={imageRef}
+			onSelect={onSelect}
+			onChange={onChange}
+			registerRef={registerRef}
+			interactive={interactive}
+			onAltDragDuplicate={onAltDragDuplicate}
 		/>
 	);
 }

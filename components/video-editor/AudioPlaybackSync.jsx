@@ -11,7 +11,7 @@ export default function AudioPlaybackSync() {
 
 	const activeScene = project.scenes.find((s) => s.id === activeSceneId);
 	const previewTime = playback.previewLocalTime ?? 0;
-	const shouldPlay = playback.isPlaying || playback.isRendering;
+	const shouldPlay = playback.isPlaying;
 
 	useEffect(() => {
 		if (!activeScene) return;

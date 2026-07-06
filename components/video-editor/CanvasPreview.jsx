@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useCallback, useMemo } from "react";
-import { Stage, Layer, Group, Text, Rect, Circle, Ellipse, Image, Transformer } from "react-konva";
+import { Stage, Layer, Group, Text, Rect, Circle, Ellipse, Transformer } from "react-konva";
 import { useAppDispatch, useAppSelector } from "@/lib/store/hooks";
 import { selectLayer, updateLayer, duplicateLayerInPlace } from "@/lib/store/slices/videoEditorSlice";
 import { CANVAS_WIDTH, CANVAS_HEIGHT } from "@/lib/video-editor/constants";
@@ -11,40 +11,101 @@ import {
 	layerAnimProps,
 	shapeAnimProps,
 } from "@/lib/video-editor/animations";
-import { konvaAltDragHandlers } from "@/lib/video-editor/konvaDrag";
+import { konvaAltDragHandlers, useKonvaDragHandlers, konvaVisualToLayerPosition, konvaCenterToLayerPosition, LayerHitRect } from "@/lib/video-editor/konvaDrag";
 import { useStageRef } from "./StageRefContext";
 import CanvasHotkeys from "./CanvasHotkeys";
 import KonvaVideoLayer from "./KonvaVideoLayer";
+import KonvaMediaFrame from "./KonvaMediaFrame";
 import InlineTextEditor from "./InlineTextEditor";
+import { getCachedImage, loadKonvaImage } from "@/lib/video-editor/imageCache";
 
 function useKonvaImage(src) {
-	const [image, setImage] = useState(null);
+	const [image, setImage] = useState(() => getCachedImage(src));
+
 	useEffect(() => {
 		if (!src) {
 			setImage(null);
 			return;
 		}
-		const img = new window.Image();
-		img.crossOrigin = "anonymous";
-		img.onload = () => setImage(img);
-		img.onerror = () => setImage(null);
-		img.src = src;
+
+		const cached = getCachedImage(src);
+		if (cached) {
+			setImage(cached);
+			return;
+		}
+
+		let cancelled = false;
+		loadKonvaImage(src).then((img) => {
+			if (!cancelled) setImage(img);
+		});
+		return () => {
+			cancelled = true;
+		};
 	}, [src]);
+
 	return image;
 }
 
 function KonvaImageLayer({ layer, anim, isSelected, onSelect, onChange, registerRef, interactive, onAltDragDuplicate }) {
 	const image = useKonvaImage(layer.data?.src);
-	const { data } = layer;
-	const altDrag = konvaAltDragHandlers(layer, interactive, onAltDragDuplicate);
-	const pos = layerAnimProps(layer, anim);
 
 	return (
-		<Image
+		<KonvaMediaFrame
+			layer={layer}
+			anim={anim}
+			mediaElement={image}
+			onSelect={onSelect}
+			onChange={onChange}
+			registerRef={registerRef}
+			interactive={interactive}
+			onAltDragDuplicate={onAltDragDuplicate}
+		/>
+	);
+}
+
+function KonvaIconLayer({
+	layer,
+	anim,
+	isSelected,
+	onSelect,
+	onChange,
+	registerRef,
+	interactive,
+	onAltDragDuplicate,
+}) {
+	const { data } = layer;
+	const altDrag = konvaAltDragHandlers(layer, interactive, onAltDragDuplicate);
+	const { x, y, pos, dragHandlers, selectHandlers } = useKonvaDragHandlers(
+		layer,
+		anim,
+		onChange,
+	);
+
+	const ringWidth = data.ringWidth ?? 0;
+	const ringOffset = data.ringOffset ?? 4;
+	const borderWidth = data.borderWidth ?? 0;
+	const ringPad = ringWidth > 0 ? ringOffset + ringWidth / 2 : 0;
+
+	const handleTransformEnd = (e) => {
+		const node = e.target;
+		const scaleX = node.scaleX();
+		const scaleY = node.scaleY();
+		const pos = konvaVisualToLayerPosition(layer, anim, node.x(), node.y());
+		onChange({
+			...pos,
+			width: Math.max(20, node.width() * scaleX),
+			height: Math.max(20, node.height() * scaleY),
+			rotation: node.rotation() - (anim?.rotationOffset ?? 0),
+		});
+		node.scaleX(1);
+		node.scaleY(1);
+	};
+
+	return (
+		<Group
 			ref={registerRef}
-			image={image}
-			x={pos.x}
-			y={pos.y}
+			x={x}
+			y={y}
 			width={layer.width}
 			height={layer.height}
 			scaleX={pos.scaleX}
@@ -53,44 +114,76 @@ function KonvaImageLayer({ layer, anim, isSelected, onSelect, onChange, register
 			opacity={pos.opacity}
 			visible={layer.visible}
 			draggable={interactive && !layer.locked}
-			onClick={onSelect}
-			onTap={onSelect}
+			{...selectHandlers(onSelect)}
 			{...altDrag}
-			onDragEnd={(e) =>
-				onChange({ x: e.target.x(), y: e.target.y() })
-			}
-			onTransformEnd={(e) => {
-				const node = e.target;
-				const scaleX = node.scaleX();
-				const scaleY = node.scaleY();
-				onChange({
-					x: node.x(),
-					y: node.y(),
-					width: Math.max(20, node.width() * scaleX),
-					height: Math.max(20, node.height() * scaleY),
-					rotation: node.rotation(),
-				});
-				node.scaleX(1);
-				node.scaleY(1);
-			}}
-			cornerRadius={data?.borderRadius ?? 0}
-			shadowBlur={data?.shadowBlur ?? 0}
-			shadowColor={data?.shadowColor ?? "black"}
-			stroke={isSelected ? "#ea580c" : undefined}
-			strokeWidth={isSelected ? 2 : 0}
-		/>
+			{...dragHandlers}
+			onTransformEnd={handleTransformEnd}
+		>
+			{ringWidth > 0 && (
+				<Rect
+					x={-ringPad}
+					y={-ringPad}
+					width={layer.width + ringPad * 2}
+					height={layer.height + ringPad * 2}
+					cornerRadius={(data.ringRadius ?? 0) + ringPad}
+					stroke={data.ringColor || "#ffffff"}
+					strokeWidth={ringWidth}
+					fill="transparent"
+					listening={false}
+				/>
+			)}
+			{borderWidth > 0 && (
+				<Rect
+					width={layer.width}
+					height={layer.height}
+					cornerRadius={data.borderRadius ?? 0}
+					stroke={data.borderColor || "#ffffff"}
+					strokeWidth={borderWidth}
+					fill={
+						data.borderFill && data.borderFill !== "transparent"
+							? data.borderFill
+							: undefined
+					}
+					listening={false}
+				/>
+			)}
+			<Text
+				width={layer.width}
+				height={layer.height}
+				text={data.icon}
+				fontSize={data.fontSize ?? 48}
+				fill={data.fill}
+				align="center"
+				verticalAlign="middle"
+				letterSpacing={data.letterSpacing ?? 0}
+				stroke={data.stroke || undefined}
+				strokeWidth={data.strokeWidth ?? 0}
+				shadowColor={
+					data.shadowBlur > 0 ? data.shadowColor || "rgba(0,0,0,0.4)" : undefined
+				}
+				shadowBlur={data.shadowBlur ?? 0}
+				shadowOffsetX={data.shadowOffsetX ?? 0}
+				shadowOffsetY={data.shadowOffsetY ?? 0}
+				listening={false}
+			/>
+			<LayerHitRect width={layer.width} height={layer.height} />
+		</Group>
 	);
 }
 
 function PlaceholderLayer({ layer, anim, isSelected, onSelect, onChange, registerRef, color, label, interactive, onAltDragDuplicate }) {
 	const altDrag = konvaAltDragHandlers(layer, interactive, onAltDragDuplicate);
-	const pos = layerAnimProps(layer, anim);
+	const { x, y, pos, dragHandlers, selectHandlers } = useKonvaDragHandlers(
+		layer,
+		anim,
+		onChange,
+	);
 	return (
 		<>
 			<Rect
 				ref={registerRef}
-				x={pos.x}
-				y={pos.y}
+				x={x}
+				y={y}
 				width={layer.width}
 				height={layer.height}
 				scaleX={pos.scaleX}
@@ -101,22 +194,19 @@ function PlaceholderLayer({ layer, anim, isSelected, onSelect, onChange, registe
 				fill={color}
 				cornerRadius={8}
 				draggable={interactive && !layer.locked}
-				onClick={onSelect}
-				onTap={onSelect}
+				{...selectHandlers(onSelect)}
 				{...altDrag}
-				onDragEnd={(e) =>
-					onChange({ x: e.target.x(), y: e.target.y() })
-				}
+				{...dragHandlers}
 				onTransformEnd={(e) => {
 					const node = e.target;
 					const scaleX = node.scaleX();
 					const scaleY = node.scaleY();
+					const nextPos = konvaVisualToLayerPosition(layer, anim, node.x(), node.y());
 					onChange({
-						x: node.x(),
-						y: node.y(),
+						...nextPos,
 						width: Math.max(20, node.width() * scaleX),
 						height: Math.max(20, node.height() * scaleY),
-						rotation: node.rotation(),
+						rotation: node.rotation() - (anim?.rotationOffset ?? 0),
 					});
 					node.scaleX(1);
 					node.scaleY(1);
@@ -147,7 +237,7 @@ function LayerNode({
 	sceneDuration,
 	previewTime,
 	applyAnimation,
-	isPlaying,
+	isVideoPlaying,
 	audioUnlocked,
 	isSelected,
 	onSelect,
@@ -163,15 +253,27 @@ function LayerNode({
 	const anim = applyAnimation
 		? computeLayerAnimationState(layer, previewTime)
 		: computeLayerAnimationState(layer, Infinity);
-	const pos = layerAnimProps(layer, anim);
+	const isCenteredShape =
+		layer.type === "shape" &&
+		(data.shape === "circle" || data.shape === "ellipse");
+	const shapePos = layer.type === "shape" ? shapeAnimProps(layer, anim) : null;
+	const { x, y, pos, dragHandlers, selectHandlers } = useKonvaDragHandlers(
+		layer,
+		anim,
+		onChange,
+		{
+			centered: isCenteredShape,
+			getPosition: shapePos ? () => shapePos : undefined,
+		},
+	);
 
 	if (layer.type === "text") {
 		const displayText = isEditing ? data.content : (anim.displayText ?? data.content);
 		return (
 			<Text
 				ref={registerRef}
-				x={pos.x}
-				y={pos.y}
+				x={x}
+				y={y}
 				width={layer.width}
 				text={displayText}
 				fontSize={data.fontSize}
@@ -179,7 +281,7 @@ function LayerNode({
 				fontStyle={data.fontWeight >= 600 ? "bold" : "normal"}
 				fill={data.fill}
 				align={data.align}
-				letterSpacing={data.letterSpacing}
+				letterSpacing={(data.letterSpacing ?? 0) + (anim.letterSpacingExtra ?? 0)}
 				lineHeight={data.lineHeight}
 				scaleX={pos.scaleX}
 				scaleY={pos.scaleY}
@@ -193,8 +295,7 @@ function LayerNode({
 				stroke={data.stroke || undefined}
 				strokeWidth={data.strokeWidth || 0}
 				draggable={interactive && !layer.locked && !isEditing}
-				onClick={onSelect}
-				onTap={onSelect}
+				{...selectHandlers(onSelect)}
 				onDblClick={(e) => {
 					e.cancelBubble = true;
 					if (interactive && !layer.locked && onStartEdit) onStartEdit();
@@ -204,19 +305,17 @@ function LayerNode({
 					if (interactive && !layer.locked && onStartEdit) onStartEdit();
 				}}
 				{...altDrag}
-				onDragEnd={(e) =>
-					onChange({ x: e.target.x(), y: e.target.y() })
-				}
+				{...dragHandlers}
 				onTransformEnd={(e) => {
 					const node = e.target;
 					const scaleX = node.scaleX();
 					const scaleY = node.scaleY();
+					const pos = konvaVisualToLayerPosition(layer, anim, node.x(), node.y());
 					onChange({
-						x: node.x(),
-						y: node.y(),
+						...pos,
 						width: Math.max(40, node.width() * scaleX),
 						height: Math.max(20, node.height() * scaleY),
-						rotation: node.rotation(),
+						rotation: node.rotation() - (anim?.rotationOffset ?? 0),
 					});
 					node.scaleX(1);
 					node.scaleY(1);
@@ -247,7 +346,7 @@ function LayerNode({
 				anim={anim}
 				sceneDuration={sceneDuration}
 				previewTime={previewTime}
-				isPlaying={isPlaying}
+				isVideoPlaying={isVideoPlaying}
 				audioUnlocked={audioUnlocked}
 				isSelected={isSelected}
 				onSelect={onSelect}
@@ -278,86 +377,49 @@ function LayerNode({
 
 	if (layer.type === "icon") {
 		return (
-			<Text
-				ref={registerRef}
-				x={pos.x}
-				y={pos.y}
-				width={layer.width}
-				height={layer.height}
-				text={data.icon}
-				fontSize={data.fontSize ?? 48}
-				fill={data.fill}
-				align="center"
-				verticalAlign="middle"
-				scaleX={pos.scaleX}
-				scaleY={pos.scaleY}
-				rotation={pos.rotation}
-				opacity={pos.opacity}
-				visible={layer.visible}
-				draggable={interactive && !layer.locked}
-				onClick={onSelect}
-				onTap={onSelect}
-				{...altDrag}
-				onDragEnd={(e) =>
-					onChange({ x: e.target.x(), y: e.target.y() })
-				}
-				onTransformEnd={(e) => {
-					const node = e.target;
-					const scaleX = node.scaleX();
-					const scaleY = node.scaleY();
-					onChange({
-						x: node.x(),
-						y: node.y(),
-						width: Math.max(20, node.width() * scaleX),
-						height: Math.max(20, node.height() * scaleY),
-						rotation: node.rotation(),
-					});
-					node.scaleX(1);
-					node.scaleY(1);
-				}}
+			<KonvaIconLayer
+				layer={layer}
+				anim={anim}
+				isSelected={isSelected}
+				onSelect={onSelect}
+				onChange={onChange}
+				registerRef={registerRef}
+				interactive={interactive}
+				onAltDragDuplicate={onAltDragDuplicate}
 			/>
 		);
 	}
 
 	if (layer.type === "shape") {
 		const isCentered = data.shape === "circle" || data.shape === "ellipse";
-		const shapePos = shapeAnimProps(layer, anim);
-		const shapeDragEnd = (e) => {
-			const nx = e.target.x();
-			const ny = e.target.y();
-			onChange(
-				isCentered
-					? { x: nx - layer.width / 2, y: ny - layer.height / 2 }
-					: { x: nx, y: ny },
-			);
-		};
 		const common = {
 			ref: registerRef,
-			x: shapePos.x,
-			y: shapePos.y,
-			scaleX: shapePos.scaleX,
-			scaleY: shapePos.scaleY,
-			rotation: shapePos.rotation,
-			opacity: shapePos.opacity,
+			x,
+			y,
+			scaleX: pos.scaleX,
+			scaleY: pos.scaleY,
+			rotation: pos.rotation,
+			opacity: pos.opacity,
 			visible: layer.visible,
 			fill: data.fill,
 			stroke: data.stroke || undefined,
 			strokeWidth: data.strokeWidth ?? 0,
 			draggable: interactive && !layer.locked,
-			onClick: onSelect,
-			onTap: onSelect,
+			...selectHandlers(onSelect),
 			...altDrag,
-			onDragEnd: shapeDragEnd,
+			...dragHandlers,
 			onTransformEnd: (e) => {
 				const node = e.target;
 				const scaleX = node.scaleX();
 				const scaleY = node.scaleY();
+				const basePos = isCentered
+					? konvaCenterToLayerPosition(layer, node.x(), node.y(), anim)
+					: konvaVisualToLayerPosition(layer, anim, node.x(), node.y());
 				onChange({
-					x: node.x(),
-					y: node.y(),
-					width: Math.max(10, node.width() * scaleX),
-					height: Math.max(10, node.height() * scaleY),
-					rotation: node.rotation(),
+					...basePos,
+					width: Math.max(10, (isCentered ? layer.width : node.width()) * scaleX),
+					height: Math.max(10, (isCentered ? layer.height : node.height()) * scaleY),
+					rotation: node.rotation() - (anim?.rotationOffset ?? 0),
 				});
 				node.scaleX(1);
 				node.scaleY(1);
@@ -368,8 +430,6 @@ function LayerNode({
 			return (
 				<Circle
 					{...common}
-					x={layer.x + layer.width / 2}
-					y={layer.y + layer.height / 2}
 					radius={Math.min(layer.width, layer.height) / 2}
 				/>
 			);
@@ -378,8 +438,6 @@ function LayerNode({
 			return (
 				<Ellipse
 					{...common}
-					x={layer.x + layer.width / 2}
-					y={layer.y + layer.height / 2}
 					radiusX={layer.width / 2}
 					radiusY={layer.height / 2}
 				/>
@@ -405,6 +463,7 @@ export default function CanvasPreview() {
 	);
 	const stageRef = useStageRef();
 	const containerRef = useRef(null);
+	const stageFocusRef = useRef(null);
 	const transformerRef = useRef(null);
 	const nodeRefs = useRef({});
 	const altDragPendingRef = useRef(false);
@@ -420,8 +479,8 @@ export default function CanvasPreview() {
 	const activeScene = project.scenes.find((s) => s.id === activeSceneId);
 	const previewTime = playback.previewLocalTime ?? 0;
 	const interactive = !playback.isPlaying && !playback.isRendering;
-	const isPlaying = playback.isPlaying || playback.isRendering;
-	const applyAnimation = isPlaying;
+	const applyAnimation = playback.isPlaying || playback.isRendering;
+	const isVideoPlaying = playback.isPlaying && !playback.isRendering;
 	const audioUnlocked = playback.audioUnlocked;
 
 	const sceneTransition = useMemo(() => {
@@ -442,10 +501,11 @@ export default function CanvasPreview() {
 	const layers = useMemo(() => {
 		const all = activeScene?.layers ?? [];
 		if (!activeScene) return all;
+		if (interactive) return all;
 		return all.filter((layer) =>
 			isLayerActiveAtTime(layer, activeScene.duration, previewTime),
 		);
-	}, [activeScene, previewTime]);
+	}, [activeScene, previewTime, interactive]);
 
 	const editingLayer = useMemo(() => {
 		if (!editingLayerId || !activeScene) return null;
@@ -500,7 +560,7 @@ export default function CanvasPreview() {
 			tr.nodes([]);
 		}
 		tr.getLayer()?.batchDraw();
-	}, [selectedLayerId, layers, interactive, editingLayerId]);
+	}, [selectedLayerId, interactive, editingLayerId]);
 
 	const handleStageClick = (e) => {
 		if (e.target === e.target.getStage()) {
@@ -540,15 +600,16 @@ export default function CanvasPreview() {
 	return (
 		<div
 			ref={containerRef}
-			tabIndex={0}
-			onFocus={() => setCanvasFocused(true)}
-			onBlur={() => setCanvasFocused(false)}
-			onMouseDown={() => containerRef.current?.focus()}
-			className="flex-1 flex items-center justify-center bg-muted/40 overflow-hidden min-h-0 outline-none focus:ring-2 focus:ring-primary/30 focus:ring-inset"
+			className="flex-1 flex items-center justify-center bg-muted/40 overflow-hidden min-h-0 outline-none"
 		>
 			<CanvasHotkeys enabled={canvasFocused && interactive && !editingLayerId} />
 			<div
-				className="border-2 border-border shadow-md shrink-0 relative"
+				ref={stageFocusRef}
+				tabIndex={0}
+				onFocus={() => setCanvasFocused(true)}
+				onBlur={() => setCanvasFocused(false)}
+				onMouseDown={() => stageFocusRef.current?.focus({ preventScroll: true })}
+				className="border-2 border-border shadow-md shrink-0 relative outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
 				style={{
 					width: canvasW * scale,
 					height: canvasH * scale,
@@ -589,7 +650,7 @@ export default function CanvasPreview() {
 									sceneDuration={activeScene?.duration ?? 5}
 									previewTime={previewTime}
 									applyAnimation={applyAnimation}
-									isPlaying={isPlaying}
+									isVideoPlaying={isVideoPlaying}
 									audioUnlocked={audioUnlocked}
 									isSelected={interactive && layer.id === selectedLayerId}
 									isEditing={editingLayerId === layer.id}

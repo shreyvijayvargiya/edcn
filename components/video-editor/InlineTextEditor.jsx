@@ -91,7 +91,7 @@ export default function InlineTextEditor({
 		<textarea
 			ref={textareaRef}
 			defaultValue={layer.data?.content ?? ""}
-			className="absolute p-1 m-0 border-2 border-primary rounded-sm bg-white/95 text-foreground resize-none overflow-hidden outline-none shadow-md ring-2 ring-primary/20"
+			className="absolute p-1 m-0 border-2 border-primary rounded-sm resize-none overflow-hidden outline-none shadow-md ring-2 ring-primary/20"
 			style={style}
 			onBlur={() => commit()}
 			onMouseDown={(e) => e.stopPropagation()}

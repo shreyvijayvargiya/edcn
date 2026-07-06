@@ -47,7 +47,7 @@ export default function EditorAnimationDropdown({
 						<ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground ml-2" />
 					</Button>
 				</DropdownMenuTrigger>
-				<DropdownMenuContent align="start" className="w-[var(--radix-dropdown-menu-trigger-width)] max-h-72 overflow-y-auto">
+				<DropdownMenuContent align="start" className="w-[var(--radix-dropdown-menu-trigger-width)] max-h-80 overflow-y-auto">
 					{groups.map((group, groupIndex) => (
 						<DropdownMenuGroup key={group.label}>
 							{groupIndex > 0 && <DropdownMenuSeparator />}

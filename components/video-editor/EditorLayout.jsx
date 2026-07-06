@@ -1,28 +1,71 @@
+import { useState } from "react";
+import { LayoutPanelLeft, SlidersHorizontal } from "lucide-react";
 import Toolbar from "./Toolbar";
 import LeftPanel from "./LeftPanel";
 import CanvasPreview from "./CanvasPreview";
 import PropertyPanel from "./PropertyPanel";
 import Timeline from "./Timeline";
-import PreviewControls from "./PreviewControls";
+import SidebarOverlay from "./SidebarOverlay";
 import { StageRefProvider } from "./StageRefContext";
 import AudioPlaybackSync from "./AudioPlaybackSync";
+import EditorHistoryHotkeys from "./EditorHistoryHotkeys";
+import EditorLayerHotkeys from "./EditorLayerHotkeys";
+import { useEditorPanelSizes } from "@/lib/video-editor/useEditorPanelSizes";
 
 export default function EditorLayout() {
+	const [leftOpen, setLeftOpen] = useState(false);
+	const [rightOpen, setRightOpen] = useState(false);
+	const {
+		leftWidth,
+		rightWidth,
+		panelHeight,
+		setLeftWidth,
+		setRightWidth,
+		setPanelHeight,
+	} = useEditorPanelSizes();
+
 	return (
 		<StageRefProvider>
 			<AudioPlaybackSync />
+			<EditorHistoryHotkeys />
+			<EditorLayerHotkeys />
 			<div className="flex flex-col h-dvh overflow-hidden bg-background text-foreground">
 				<Toolbar />
-				<div className="flex flex-1 min-h-0">
-					<LeftPanel />
-					<main className="flex-1 flex flex-col min-w-0 min-h-0">
+				<div className="relative flex flex-1 min-h-0 pb-[17.5rem]">
+					<SidebarOverlay
+						side="left"
+						open={leftOpen}
+						onOpenChange={setLeftOpen}
+						width={leftWidth}
+						panelHeight={panelHeight}
+						onWidthChange={setLeftWidth}
+						onHeightChange={setPanelHeight}
+						toggleIcon={LayoutPanelLeft}
+						label="Assets panel"
+					>
+						<LeftPanel />
+					</SidebarOverlay>
+
+					<main className="flex flex-1 flex-col min-w-0 min-h-0">
 						<CanvasPreview />
-						<PreviewControls />
 					</main>
-					<PropertyPanel />
+
+					<SidebarOverlay
+						side="right"
+						open={rightOpen}
+						onOpenChange={setRightOpen}
+						width={rightWidth}
+						panelHeight={panelHeight}
+						onWidthChange={setRightWidth}
+						onHeightChange={setPanelHeight}
+						toggleIcon={SlidersHorizontal}
+						label="Properties panel"
+					>
+						<PropertyPanel />
+					</SidebarOverlay>
 				</div>
-				<Timeline />
 			</div>
+			<Timeline />
 		</StageRefProvider>
 	);
 }
