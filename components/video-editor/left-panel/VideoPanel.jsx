@@ -1,9 +1,23 @@
-import { Video } from "lucide-react";
+import { Video, Monitor } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { filterStockVideos } from "@/lib/video-editor/stockVideos";
 
-export function VideoPanel({ onUpload, onAddStock, search }) {
+export function VideoPanel({
+	onUpload,
+	onAddStock,
+	onRecordScreen,
+	recordedVideos = [],
+	search,
+}) {
 	const videos = filterStockVideos(search);
+	const recorded = (recordedVideos || []).filter((v) => {
+		if (!search?.trim()) return true;
+		const q = search.toLowerCase();
+		return (
+			v.label?.toLowerCase().includes(q) ||
+			v.tags?.some((t) => String(t).toLowerCase().includes(q))
+		);
+	});
 
 	return (
 		<div className="flex flex-col gap-3 p-3">
@@ -12,12 +26,50 @@ export function VideoPanel({ onUpload, onAddStock, search }) {
 				<span className="text-xs font-medium">Upload video</span>
 			</Button>
 
+			<Button className="w-full h-10 gap-2 shrink-0" onClick={onRecordScreen}>
+				<Monitor className="h-4 w-4" />
+				<span className="text-xs font-medium">Record screen</span>
+			</Button>
+
+			{recorded.length > 0 && (
+				<>
+					<div className="flex items-center justify-between gap-2">
+						<p className="text-sm font-bold text-foreground">Your recordings</p>
+						<span className="text-[10px] text-muted-foreground tabular-nums">
+							{recorded.length}
+						</span>
+					</div>
+					<div className="grid grid-cols-1 gap-2">
+						{recorded.map((item) => (
+							<button
+								key={item.id}
+								type="button"
+								onClick={() => onAddStock(item)}
+								className="group relative aspect-video overflow-hidden rounded-lg border-2 border-primary/40 bg-muted/30 hover:border-primary transition-colors text-left"
+								title={item.label}
+							>
+								<video
+									src={item.src}
+									muted
+									playsInline
+									preload="metadata"
+									className="absolute inset-0 h-full w-full object-cover"
+								/>
+								<span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2 py-1.5 text-[10px] font-semibold text-white truncate">
+									{item.label}
+								</span>
+							</button>
+						))}
+					</div>
+				</>
+			)}
+
 			<div className="flex items-center justify-between gap-2">
 				<p className="text-sm font-bold text-foreground">Sample videos</p>
 				<span className="text-[10px] text-muted-foreground tabular-nums">{videos.length}</span>
 			</div>
 			<p className="text-[10px] text-muted-foreground leading-relaxed -mt-2">
-				Click to add a clip to the canvas. Edit text and export on top.
+				Upload, record screen/window/tab with audio, or add a sample clip.
 			</p>
 
 			{videos.length === 0 ? (

@@ -6,21 +6,37 @@ import { EDITOR_ICONS } from "@/lib/video-editor/icons";
 import {
 	DEFAULT_MOTION,
 	DEFAULT_FRAME_SWAP,
+	DEFAULT_ANCHOR,
+	DEFAULT_MOTION_PATH,
 	KEYFRAME_PROPERTIES,
 	createKeyframe,
+	createPathPoint,
 	defaultRotationKeyframes,
+	defaultPositionKeyframes,
 	keyframeValueFromUi,
 	keyframeValueToUi,
 	layerPropertyToKeyframeValue,
 	supportsFrameSwap,
 	supportsKeyframes,
 } from "@/lib/video-editor/motion";
+import { EASING_OPTIONS } from "@/lib/video-editor/animations";
 import { PanelSection, Field, RangeField, Button } from "./PropertyPanelSections";
-import { Plus, Minus, Wand2, FlipHorizontal2 } from "lucide-react";
+import PropertySelect from "../PropertySelect";
+import { Plus, Minus, Wand2, FlipHorizontal2, Route } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 function ensureMotion(layer) {
-	return layer.motion ?? { ...DEFAULT_MOTION, frameSwap: { ...DEFAULT_FRAME_SWAP }, keyframes: { enabled: false, items: [] } };
+	return {
+		...DEFAULT_MOTION,
+		frameSwap: { ...DEFAULT_FRAME_SWAP, ...(layer.motion?.frameSwap || {}) },
+		keyframes: {
+			enabled: false,
+			items: [],
+			...(layer.motion?.keyframes || {}),
+		},
+		anchor: { ...DEFAULT_ANCHOR, ...(layer.motion?.anchor || {}) },
+		path: { ...DEFAULT_MOTION_PATH, ...(layer.motion?.path || {}) },
+	};
 }
 
 export function AdvancedMotionSection({ layer, scene, sceneId, layerId }) {
@@ -50,9 +66,17 @@ export function AdvancedMotionSection({ layer, scene, sceneId, layerId }) {
 		});
 	};
 
+	const patchAnchor = (patch) => {
+		patchMotion({ anchor: { ...DEFAULT_ANCHOR, ...motion.anchor, ...patch } });
+	};
+
+	const patchPath = (patch) => {
+		patchMotion({ path: { ...DEFAULT_MOTION_PATH, ...motion.path, ...patch } });
+	};
+
 	const fs = motion.frameSwap ?? DEFAULT_FRAME_SWAP;
 	const kf = motion.keyframes ?? { enabled: false, items: [] };
-	const [activeProp, setActiveProp] = useState("rotation");
+	const [activeProp, setActiveProp] = useState("x");
 
 	const propMeta = KEYFRAME_PROPERTIES.find((p) => p.id === activeProp);
 	const propKeyframes = (kf.items ?? [])
@@ -85,16 +109,38 @@ export function AdvancedMotionSection({ layer, scene, sceneId, layerId }) {
 		patchKeyframes({ items, enabled: items.length > 0 && kf.enabled });
 	};
 
-	const enableRotationPreset = () => {
-		patchKeyframes({ enabled: true, items: defaultRotationKeyframes(layer) });
-		setActiveProp("rotation");
-	};
+	const pathPoints = motion.path?.points ?? [];
 
 	return (
 		<PanelSection title="Advanced motion" icon={Wand2} defaultOpen={false} sectionId="advanced-motion">
 			<p className="text-[10px] text-muted-foreground leading-relaxed">
-				Keyframe transforms over the clip, or swap icon/image frames — e.g. closed folder → open.
+				Keyframe position, size, rotation, opacity & scale. Add paths, anchors, easing, or frame
+				swap.
 			</p>
+
+			<div className="space-y-2 rounded-md border border-border bg-muted/30 p-2">
+				<p className="text-[10px] font-semibold text-foreground">Anchor point</p>
+				<div className="grid grid-cols-2 gap-2">
+					<RangeField
+						label="Anchor X"
+						value={Math.round((motion.anchor?.x ?? 0.5) * 100)}
+						min={0}
+						max={100}
+						step={1}
+						formatValue={(v) => `${v}%`}
+						onChange={(v) => patchAnchor({ x: v / 100 })}
+					/>
+					<RangeField
+						label="Anchor Y"
+						value={Math.round((motion.anchor?.y ?? 0.5) * 100)}
+						min={0}
+						max={100}
+						step={1}
+						formatValue={(v) => `${v}%`}
+						onChange={(v) => patchAnchor({ y: v / 100 })}
+					/>
+				</div>
+			</div>
 
 			{supportsFrameSwap(layer.type) && (
 				<div className="space-y-2 rounded-md border border-border bg-muted/30 p-2">
@@ -142,9 +188,6 @@ export function AdvancedMotionSection({ layer, scene, sceneId, layerId }) {
 											</button>
 										))}
 									</div>
-									<p className="text-[9px] text-muted-foreground mt-1">
-										Frame 1 is the current icon ({layer.data?.icon})
-									</p>
 								</Field>
 							) : (
 								<Field label="Frame 2 URL">
@@ -154,9 +197,6 @@ export function AdvancedMotionSection({ layer, scene, sceneId, layerId }) {
 										placeholder="https://..."
 										className="h-8 text-sm"
 									/>
-									<p className="text-[9px] text-muted-foreground mt-1">
-										Frame 1 is the current image source
-									</p>
 								</Field>
 							)}
 							<RangeField
@@ -181,121 +221,246 @@ export function AdvancedMotionSection({ layer, scene, sceneId, layerId }) {
 			)}
 
 			{supportsKeyframes(layer.type) && (
-				<div className="space-y-2 rounded-md border border-border bg-muted/30 p-2">
-					<label className="flex items-center gap-2 cursor-pointer select-none">
-						<input
-							type="checkbox"
-							checked={kf.enabled}
-							onChange={(e) => {
-								const enabled = e.target.checked;
-								if (enabled && (kf.items ?? []).length === 0) {
-									patchKeyframes({ enabled: true, items: defaultRotationKeyframes(layer) });
-									setActiveProp("rotation");
-								} else {
-									patchKeyframes({ enabled });
-								}
-							}}
-							className="h-3.5 w-3.5 rounded border-border accent-primary"
-						/>
-						<span className="text-[10px] font-semibold text-foreground">Property keyframes</span>
-					</label>
+				<>
+					<div className="space-y-2 rounded-md border border-border bg-muted/30 p-2">
+						<label className="flex items-center gap-2 cursor-pointer select-none">
+							<input
+								type="checkbox"
+								checked={kf.enabled}
+								onChange={(e) => {
+									const enabled = e.target.checked;
+									if (enabled && (kf.items ?? []).length === 0) {
+										patchKeyframes({ enabled: true, items: defaultPositionKeyframes(layer) });
+										setActiveProp("x");
+									} else {
+										patchKeyframes({ enabled });
+									}
+								}}
+								className="h-3.5 w-3.5 rounded border-border accent-primary"
+							/>
+							<span className="text-[10px] font-semibold text-foreground">Property keyframes</span>
+						</label>
 
-					{kf.enabled && (
-						<>
-							<div className="flex gap-1">
-								{KEYFRAME_PROPERTIES.map((p) => (
-									<Button
-										key={p.id}
-										type="button"
-										size="sm"
-										variant={activeProp === p.id ? "default" : "outline"}
-										className="flex-1 text-[10px] h-7 px-1"
-										onClick={() => setActiveProp(p.id)}
-									>
-										{p.label}
-									</Button>
-								))}
-							</div>
+						{kf.enabled && (
+							<>
+								<div className="flex flex-wrap gap-1">
+									{KEYFRAME_PROPERTIES.map((p) => (
+										<Button
+											key={p.id}
+											type="button"
+											size="sm"
+											variant={activeProp === p.id ? "default" : "outline"}
+											className="text-[10px] h-7 px-1.5"
+											onClick={() => setActiveProp(p.id)}
+										>
+											{p.label}
+										</Button>
+									))}
+								</div>
 
-							<div className="flex gap-1">
-								<Button
-									type="button"
-									size="sm"
-									variant="outline"
-									className="flex-1 text-[10px] h-7"
-									onClick={addKeyframeAtPlayhead}
-								>
-									<Plus className="h-3 w-3 mr-1" />
-									At playhead ({relPlayhead.toFixed(1)}s)
-								</Button>
-								{activeProp === "rotation" && (
+								<div className="flex gap-1">
 									<Button
 										type="button"
 										size="sm"
 										variant="outline"
-										className="text-[10px] h-7 px-2"
-										onClick={enableRotationPreset}
+										className="flex-1 text-[10px] h-7"
+										onClick={addKeyframeAtPlayhead}
 									>
-										90° preset
+										<Plus className="h-3 w-3 mr-1" />
+										At playhead ({relPlayhead.toFixed(1)}s)
 									</Button>
-								)}
-							</div>
-
-							{propKeyframes.length === 0 ? (
-								<p className="text-[9px] text-muted-foreground">
-									No {propMeta?.label.toLowerCase()} keyframes. Add at playhead or use the preset.
-								</p>
-							) : (
-								<div className="space-y-1.5">
-									{propKeyframes.map((item) => (
-										<div
-											key={item.id}
-											className="flex items-center gap-1 border border-border rounded-md p-1.5 bg-background/60"
+									{activeProp === "rotation" && (
+										<Button
+											type="button"
+											size="sm"
+											variant="outline"
+											className="text-[10px] h-7 px-2"
+											onClick={() => {
+												patchKeyframes({ enabled: true, items: defaultRotationKeyframes(layer) });
+											}}
 										>
-											<div className="flex-1 min-w-0 space-y-1">
-												<RangeField
-													label="Time"
-													value={Math.round(item.time * 10) / 10}
-													min={0}
-													max={clipDuration}
-													step={0.1}
-													onChange={(v) => updateKeyframe(item.id, { time: v })}
-												/>
-												<RangeField
-													label={propMeta?.label ?? "Value"}
-													value={keyframeValueToUi(activeProp, item.value)}
-													min={propMeta?.min ?? 0}
-													max={propMeta?.max ?? 100}
-													step={propMeta?.step ?? 1}
-													formatValue={
-														propMeta?.unit
-															? (v) => `${v}${propMeta.unit}`
-															: undefined
-													}
-													onChange={(v) =>
-														updateKeyframe(item.id, {
-															value: keyframeValueFromUi(activeProp, v),
-														})
-													}
-												/>
-											</div>
-											<Button
-												type="button"
-												size="icon"
-												variant="ghost"
-												className="h-7 w-7 shrink-0 self-start"
-												disabled={propKeyframes.length <= 1}
-												onClick={() => removeKeyframe(item.id)}
-											>
-												<Minus className="h-3.5 w-3.5" />
-											</Button>
-										</div>
-									))}
+											90°
+										</Button>
+									)}
 								</div>
-							)}
-						</>
-					)}
-				</div>
+
+								{propKeyframes.length === 0 ? (
+									<p className="text-[9px] text-muted-foreground">
+										No {propMeta?.label.toLowerCase()} keyframes yet.
+									</p>
+								) : (
+									<div className="space-y-1.5">
+										{propKeyframes.map((item) => (
+											<div
+												key={item.id}
+												className="flex items-start gap-1 border border-border rounded-md p-1.5 bg-background/60"
+											>
+												<div className="flex-1 min-w-0 space-y-1">
+													<RangeField
+														label="Time"
+														value={Math.round(item.time * 10) / 10}
+														min={0}
+														max={clipDuration}
+														step={0.1}
+														onChange={(v) => updateKeyframe(item.id, { time: v })}
+													/>
+													<RangeField
+														label={propMeta?.label ?? "Value"}
+														value={keyframeValueToUi(activeProp, item.value)}
+														min={propMeta?.min ?? 0}
+														max={propMeta?.max ?? 100}
+														step={propMeta?.step ?? 1}
+														formatValue={
+															propMeta?.unit ? (v) => `${v}${propMeta.unit}` : undefined
+														}
+														onChange={(v) =>
+															updateKeyframe(item.id, {
+																value: keyframeValueFromUi(activeProp, v),
+															})
+														}
+													/>
+													<Field label="Easing">
+														<PropertySelect
+															value={item.easing || "easeOutCubic"}
+															onChange={(easing) => updateKeyframe(item.id, { easing })}
+															options={EASING_OPTIONS.map((e) => ({
+																value: e.id,
+																label: e.label,
+															}))}
+															placeholder="Easing"
+														/>
+													</Field>
+												</div>
+												<Button
+													type="button"
+													size="icon"
+													variant="ghost"
+													className="h-7 w-7 shrink-0"
+													disabled={propKeyframes.length <= 1}
+													onClick={() => removeKeyframe(item.id)}
+												>
+													<Minus className="h-3.5 w-3.5" />
+												</Button>
+											</div>
+										))}
+									</div>
+								)}
+							</>
+						)}
+					</div>
+
+					<div className="space-y-2 rounded-md border border-border bg-muted/30 p-2">
+						<label className="flex items-center gap-2 cursor-pointer select-none">
+							<input
+								type="checkbox"
+								checked={Boolean(motion.path?.enabled)}
+								onChange={(e) => {
+									const enabled = e.target.checked;
+									const points =
+										pathPoints.length >= 2
+											? pathPoints
+											: [
+													createPathPoint(layer.x, layer.y, 0),
+													createPathPoint(layer.x + 40, layer.y - 30, clipDuration * 0.5),
+												];
+									patchPath({ enabled, points });
+								}}
+								className="h-3.5 w-3.5 rounded border-border accent-primary"
+							/>
+							<span className="text-[10px] font-semibold text-foreground flex items-center gap-1">
+								<Route className="h-3 w-3" />
+								Motion path
+							</span>
+						</label>
+						{motion.path?.enabled && (
+							<>
+								<div className="flex gap-1">
+									<Button
+										type="button"
+										size="sm"
+										variant="outline"
+										className="flex-1 text-[10px] h-7"
+										onClick={() => {
+											const pts = [
+												...pathPoints,
+												createPathPoint(
+													layer.x + pathPoints.length * 20,
+													layer.y - pathPoints.length * 10,
+													Math.round(relPlayhead * 10) / 10,
+												),
+											];
+											patchPath({ points: pts });
+										}}
+									>
+										<Plus className="h-3 w-3 mr-1" />
+										Point at playhead
+									</Button>
+								</div>
+								{pathPoints.map((pt) => (
+									<div
+										key={pt.id}
+										className="grid grid-cols-[1fr_1fr_1fr_auto] gap-1 items-end border border-border rounded-md p-1.5"
+									>
+										<RangeField
+											label="T"
+											value={Math.round(pt.time * 10) / 10}
+											min={0}
+											max={clipDuration}
+											step={0.1}
+											onChange={(v) =>
+												patchPath({
+													points: pathPoints.map((p) =>
+														p.id === pt.id ? { ...p, time: v } : p,
+													),
+												})
+											}
+										/>
+										<RangeField
+											label="X"
+											value={Math.round(pt.x)}
+											min={-500}
+											max={2000}
+											step={1}
+											onChange={(v) =>
+												patchPath({
+													points: pathPoints.map((p) =>
+														p.id === pt.id ? { ...p, x: v } : p,
+													),
+												})
+											}
+										/>
+										<RangeField
+											label="Y"
+											value={Math.round(pt.y)}
+											min={-500}
+											max={2000}
+											step={1}
+											onChange={(v) =>
+												patchPath({
+													points: pathPoints.map((p) =>
+														p.id === pt.id ? { ...p, y: v } : p,
+													),
+												})
+											}
+										/>
+										<Button
+											type="button"
+											size="icon"
+											variant="ghost"
+											className="h-7 w-7"
+											disabled={pathPoints.length <= 2}
+											onClick={() =>
+												patchPath({ points: pathPoints.filter((p) => p.id !== pt.id) })
+											}
+										>
+											<Minus className="h-3.5 w-3.5" />
+										</Button>
+									</div>
+								))}
+							</>
+						)}
+					</div>
+				</>
 			)}
 		</PanelSection>
 	);

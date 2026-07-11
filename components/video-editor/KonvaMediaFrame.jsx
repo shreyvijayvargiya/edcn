@@ -1,4 +1,5 @@
-import { Group, Rect, Image } from "react-konva";
+import { useEffect, useMemo, useRef } from "react";
+import { Group, Rect, Image, Circle } from "react-konva";
 import {
 	konvaAltDragHandlers,
 	konvaVisualToLayerPosition,
@@ -8,7 +9,6 @@ import {
 import {
 	borderDashForStyle,
 	computeImageDrawRect,
-	clipRoundedRect,
 } from "@/lib/video-editor/imageLayout";
 import { layerAnimProps } from "@/lib/video-editor/animations";
 import { mediaElementSize, DEFAULT_MEDIA_LAYER_STYLE } from "@/lib/video-editor/mediaLayerStyle";
@@ -17,9 +17,18 @@ import {
 	konvaRingPad,
 	konvaShadowProps,
 } from "@/lib/video-editor/layerChromeStyle";
+import {
+	resolveMediaEffects,
+	buildMaskClipFunc,
+	mediaEffectsNeedPixelFilters,
+	buildParticleSprites,
+	vignetteFill,
+} from "@/lib/video-editor/mediaEffects";
+import { buildKonvaFilterConfig } from "@/lib/video-editor/konvaMediaFilters";
+import { DemoClickRings } from "./KonvaCaptionLayer";
 
 /**
- * Shared frame (ring, border, clip, shadow, object-fit) for image & video layers.
+ * Shared frame (ring, border, clip, shadow, object-fit, advanced effects) for image & video.
  */
 export default function KonvaMediaFrame({
 	layer,
@@ -30,13 +39,16 @@ export default function KonvaMediaFrame({
 	frameSwap = null,
 	placeholderFill = "rgba(0,0,0,0.08)",
 	mediaImageRef,
+	effectsCacheRef,
 	onSelect,
 	onChange,
 	registerRef,
 	interactive,
 	onAltDragDuplicate,
+	previewTime = 0,
 }) {
 	const { data } = layer;
+	const effectsGroupRef = useRef(null);
 	const altDrag = konvaAltDragHandlers(layer, interactive, onAltDragDuplicate);
 	const { x, y, pos, dragHandlers, selectHandlers } = useKonvaDragHandlers(
 		layer,
@@ -53,24 +65,30 @@ export default function KonvaMediaFrame({
 	const { borderRadius, borderWidth, ringWidth, ringColor, ringRadius, borderColor, borderStyle } =
 		chrome;
 	const ringPad = konvaRingPad(chrome);
+	const effects = useMemo(() => resolveMediaEffects(data), [data]);
+	const filterConfig = useMemo(() => buildKonvaFilterConfig(effects), [effects]);
+	const needFilters = mediaEffectsNeedPixelFilters(effects);
+
+	const frameW = pos.width ?? layer.width;
+	const frameH = pos.height ?? layer.height;
 
 	const size = mediaElementSize(mediaElement);
 	const draw = size
 		? computeImageDrawRect(
 				size,
-				layer.width,
-				layer.height,
+				frameW,
+				frameH,
 				data.objectFit ?? "cover",
 				data.objectPosition ?? "center",
 			)
-		: { x: 0, y: 0, width: layer.width, height: layer.height };
+		: { x: 0, y: 0, width: frameW, height: frameH };
 
 	const size2 = mediaElementSize(secondaryMediaElement);
 	const draw2 = size2
 		? computeImageDrawRect(
 				size2,
-				layer.width,
-				layer.height,
+				frameW,
+				frameH,
 				data.objectFit ?? "cover",
 				data.objectPosition ?? "center",
 			)
@@ -78,6 +96,81 @@ export default function KonvaMediaFrame({
 
 	const f1Opacity = frameSwap?.frame1Opacity ?? 1;
 	const f2Opacity = frameSwap?.frame2Opacity ?? 0;
+
+	const clipFunc = useMemo(
+		() => buildMaskClipFunc(effects, frameW, frameH, borderRadius),
+		[effects, frameW, frameH, borderRadius],
+	);
+
+	const particles = useMemo(
+		() => buildParticleSprites(effects, frameW, frameH, previewTime),
+		[effects, frameW, frameH, previewTime],
+	);
+
+	const vignette = useMemo(
+		() => vignetteFill(effects, frameW, frameH),
+		[effects, frameW, frameH],
+	);
+
+	const glowOn =
+		effects.enabled && effects.glow?.enabled && (effects.glow.intensity ?? 0) > 0;
+
+	const applyCache = () => {
+		const node = effectsGroupRef.current;
+		if (!node) return;
+		if (!needFilters) {
+			try {
+				node.clearCache();
+			} catch {
+				/* ignore */
+			}
+			node.filters([]);
+			return;
+		}
+		const { filters, attrs } = filterConfig;
+		node.filters(filters);
+		node.blurRadius(attrs.blurRadius);
+		node.brightness(attrs.brightness);
+		node.contrast(attrs.contrast);
+		node.saturation(attrs.saturation);
+		node.hue(attrs.hue);
+		node.setAttr("_chromaKey", attrs._chromaKey);
+		node.setAttr("_cropFeather", attrs._cropFeather);
+		node.setAttr("_lut", attrs._lut);
+		node.cache({ pixelRatio: 1 });
+	};
+
+	useEffect(() => {
+		applyCache();
+		effectsGroupRef.current?.getLayer()?.batchDraw();
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [
+		needFilters,
+		filterConfig,
+		frameW,
+		frameH,
+		mediaElement,
+		draw.x,
+		draw.y,
+		draw.width,
+		draw.height,
+		borderRadius,
+		effects.mask?.type,
+		effects.mask?.feather,
+	]);
+
+	useEffect(() => {
+		if (!effectsCacheRef) return;
+		effectsCacheRef.current = {
+			recache: applyCache,
+			needsFilters: needFilters,
+			getLayer: () => effectsGroupRef.current?.getLayer?.(),
+		};
+		return () => {
+			effectsCacheRef.current = null;
+		};
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [effectsCacheRef, needFilters, filterConfig, mediaElement]);
 
 	const handleTransformEnd = (e) => {
 		const node = e.target;
@@ -94,15 +187,23 @@ export default function KonvaMediaFrame({
 		node.scaleY(1);
 	};
 
-	const shadowProps = konvaShadowProps(chrome);
+	const shadowProps = glowOn
+		? {
+				shadowColor: effects.glow.color || "#ffffff",
+				shadowBlur: effects.glow.radius ?? 16,
+				shadowOpacity: effects.glow.intensity ?? 0.55,
+				shadowOffsetX: 0,
+				shadowOffsetY: 0,
+			}
+		: konvaShadowProps(chrome);
 
 	return (
 		<Group
 			ref={registerRef}
 			x={x}
 			y={y}
-			width={layer.width}
-			height={layer.height}
+			width={frameW}
+			height={frameH}
 			scaleX={pos.scaleX}
 			scaleY={pos.scaleY}
 			rotation={pos.rotation}
@@ -118,8 +219,8 @@ export default function KonvaMediaFrame({
 				<Rect
 					x={-ringPad}
 					y={-ringPad}
-					width={layer.width + ringPad * 2}
-					height={layer.height + ringPad * 2}
+					width={frameW + ringPad * 2}
+					height={frameH + ringPad * 2}
 					cornerRadius={(ringRadius ?? borderRadius) + ringPad}
 					stroke={ringColor || "#ffffff"}
 					strokeWidth={ringWidth}
@@ -129,11 +230,10 @@ export default function KonvaMediaFrame({
 			)}
 
 			<Group
-				width={layer.width}
-				height={layer.height}
-				clipFunc={(ctx) =>
-					clipRoundedRect(ctx, layer.width, layer.height, borderRadius)
-				}
+				ref={effectsGroupRef}
+				width={frameW}
+				height={frameH}
+				clipFunc={clipFunc}
 				listening={false}
 				{...shadowProps}
 			>
@@ -150,8 +250,8 @@ export default function KonvaMediaFrame({
 					/>
 				) : (
 					<Rect
-						width={layer.width}
-						height={layer.height}
+						width={frameW}
+						height={frameH}
 						fill={placeholderFill}
 						listening={false}
 					/>
@@ -167,12 +267,28 @@ export default function KonvaMediaFrame({
 						listening={false}
 					/>
 				) : null}
+
+				{vignette ? (
+					<Rect width={frameW} height={frameH} listening={false} {...vignette} />
+				) : null}
+
+				{particles.map((p) => (
+					<Circle
+						key={p.id}
+						x={p.x}
+						y={p.y}
+						radius={p.radius}
+						fill={p.color}
+						opacity={p.opacity}
+						listening={false}
+					/>
+				))}
 			</Group>
 
 			{borderWidth > 0 && (
 				<Rect
-					width={layer.width}
-					height={layer.height}
+					width={frameW}
+					height={frameH}
 					cornerRadius={borderRadius}
 					stroke={borderColor || "#ffffff"}
 					strokeWidth={borderWidth}
@@ -182,7 +298,14 @@ export default function KonvaMediaFrame({
 				/>
 			)}
 
-			<LayerHitRect width={layer.width} height={layer.height} />
+			<DemoClickRings
+				layer={layer}
+				previewTime={previewTime}
+				width={frameW}
+				height={frameH}
+			/>
+
+			<LayerHitRect width={frameW} height={frameH} />
 		</Group>
 	);
 }

@@ -3,11 +3,14 @@ import { useAppDispatch, useAppSelector } from "@/lib/store/hooks";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { CapsuleSlider } from "@/components/ui/capsule-slider";
 import PropertySelect from "../PropertySelect";
 import EditorAnimationDropdown from "../EditorAnimationDropdown";
 import {
 	getLayerAnimationGroups,
+	LAYER_EXIT_GROUPS,
+	LAYER_LOOP_MODES,
 	SCENE_TRANSITION_GROUPS,
 	SCENE_ENTER_ANIMATION_GROUPS,
 	MIN_ANIMATION_DURATION,
@@ -231,12 +234,7 @@ export function TransformSection({ layer, onPatch }) {
 function TimingCheckbox({ label, checked, onChange }) {
 	return (
 		<label className="flex items-center gap-2 cursor-pointer select-none">
-			<input
-				type="checkbox"
-				checked={checked}
-				onChange={(e) => onChange(e.target.checked)}
-				className="h-3.5 w-3.5 rounded border-border accent-primary"
-			/>
+			<Checkbox checked={checked} onCheckedChange={(value) => onChange(value === true)} />
 			<span className="text-[10px] text-muted-foreground">{label}</span>
 		</label>
 	);
@@ -346,6 +344,54 @@ export function TimingSection({ layer, scene, sceneId, layerId, dispatch }) {
 						max={MAX_ANIMATION_DURATION}
 						step={0.1}
 						onChange={(v) => patchAnim({ duration: v })}
+					/>
+				)}
+			</div>
+
+			<div className="pt-1 space-y-2">
+				<p className="text-[10px] font-semibold text-muted-foreground">Exit animation</p>
+				<EditorAnimationDropdown
+					value={anim.exitPreset ?? "none"}
+					onChange={(exitPreset) => patchAnim({ exitPreset })}
+					groups={LAYER_EXIT_GROUPS}
+					placeholder="Select exit…"
+				/>
+				{(anim.exitPreset ?? "none") !== "none" && (
+					<RangeField
+						label="Exit duration (sec)"
+						value={Math.round((anim.exitDuration ?? 0.5) * 10) / 10}
+						min={MIN_ANIMATION_DURATION}
+						max={MAX_ANIMATION_DURATION}
+						step={0.1}
+						onChange={(v) => patchAnim({ exitDuration: v })}
+					/>
+				)}
+			</div>
+
+			<div className="pt-1 space-y-2">
+				<p className="text-[10px] font-semibold text-muted-foreground">Loop</p>
+				<div className="flex gap-1">
+					{LAYER_LOOP_MODES.map((m) => (
+						<Button
+							key={m.id}
+							type="button"
+							size="sm"
+							variant={(anim.loop ?? "none") === m.id ? "default" : "outline"}
+							className="flex-1 text-[10px] h-7"
+							onClick={() => patchAnim({ loop: m.id })}
+						>
+							{m.label}
+						</Button>
+					))}
+				</div>
+				{(anim.loop ?? "none") !== "none" && (
+					<RangeField
+						label="Loop count (0 = fill clip)"
+						value={anim.loopCount ?? 0}
+						min={0}
+						max={20}
+						step={1}
+						onChange={(v) => patchAnim({ loopCount: v })}
 					/>
 				)}
 			</div>
@@ -677,6 +723,7 @@ export function LayerPanelHeader({ layer }) {
 		shape: "Shape",
 		icon: "Icon",
 		ui: "UI",
+		caption: "Captions",
 	};
 	return (
 		<div className="px-3 py-2.5 border-b border-border bg-muted/20">

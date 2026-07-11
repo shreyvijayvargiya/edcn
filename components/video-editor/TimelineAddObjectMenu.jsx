@@ -8,6 +8,8 @@ import {
 	Square,
 	Star,
 	Mic,
+	Monitor,
+	Captions,
 } from "lucide-react";
 import {
 	DropdownMenu,
@@ -18,15 +20,27 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { useAppDispatch } from "@/lib/store/hooks";
-import { openRecordAudioModal } from "@/lib/store/slices/videoEditorSlice";
+import { useAppDispatch, useAppSelector } from "@/lib/store/hooks";
+import {
+	openRecordAudioModal,
+	openRecordScreenModal,
+	addLayer,
+} from "@/lib/store/slices/videoEditorSlice";
 import { useTimelineLayerActions } from "@/lib/video-editor/useTimelineLayerActions";
+import {
+	applyCaptionStylePreset,
+	defaultCaptionData,
+	defaultCaptionPlacement,
+	estimateWordTimings,
+} from "@/lib/video-editor/captions";
 import { cn } from "@/lib/utils";
 
 export const TIMELINE_ADD_OPTIONS = [
 	{ id: "text", label: "Text", icon: Type, action: "addText" },
+	{ id: "caption", label: "Captions", icon: Captions, action: "addCaption" },
 	{ id: "image", label: "Image", icon: ImageIcon, action: "uploadImage" },
 	{ id: "video", label: "Video", icon: Video, action: "uploadVideo" },
+	{ id: "record-screen", label: "Record screen", icon: Monitor, action: "recordScreen" },
 	{ id: "audio", label: "Audio", icon: Music, action: "uploadAudio" },
 	{ id: "record-audio", label: "Record audio", icon: Mic, action: "recordAudio" },
 	{ id: "shape", label: "Object", icon: Square, action: "addShape" },
@@ -75,6 +89,9 @@ export default function TimelineAddObjectMenu({
 	const [open, setOpen] = useState(false);
 	const dispatch = useAppDispatch();
 	const actions = useTimelineLayerActions();
+	const project = useAppSelector((s) => s.videoEditor.project);
+	const activeSceneId = useAppSelector((s) => s.videoEditor.activeSceneId);
+	const activeScene = project.scenes.find((s) => s.id === activeSceneId);
 	const disabled = !actions.activeSceneId;
 
 	const runAndClose = () => setOpen(false);
@@ -83,6 +100,30 @@ export default function TimelineAddObjectMenu({
 		...actions,
 		recordAudio: (insertAt) => {
 			dispatch(openRecordAudioModal({ insertAt }));
+		},
+		recordScreen: (insertAt) => {
+			dispatch(openRecordScreenModal({ insertAt: insertAt ?? "end" }));
+		},
+		addCaption: (insertAt) => {
+			if (!activeSceneId) return;
+			const canvasW = project.canvas?.width ?? 360;
+			const canvasH = project.canvas?.height ?? 640;
+			const placement = defaultCaptionPlacement(canvasW, canvasH);
+			dispatch(
+				addLayer({
+					sceneId: activeSceneId,
+					insertAt: insertAt ?? "end",
+					type: "caption",
+					data: {
+						...applyCaptionStylePreset(defaultCaptionData(), "tiktok"),
+						words: estimateWordTimings(
+							"Your captions go here",
+							activeScene?.duration ?? 5,
+						),
+					},
+					overrides: placement,
+				}),
+			);
 		},
 	};
 

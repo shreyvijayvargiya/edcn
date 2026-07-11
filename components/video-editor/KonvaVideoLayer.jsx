@@ -26,6 +26,7 @@ export default function KonvaVideoLayer({
 	onAltDragDuplicate,
 }) {
 	const imageRef = useRef(null);
+	const effectsCacheRef = useRef(null);
 	const [videoEl, setVideoEl] = useState(null);
 	const [loadError, setLoadError] = useState(false);
 	const src = layer.data?.src;
@@ -117,6 +118,9 @@ export default function KonvaVideoLayer({
 				}
 			}
 			imageRef.current?.getLayer()?.batchDraw();
+			if (effectsCacheRef.current?.needsFilters) {
+				effectsCacheRef.current.recache?.();
+			}
 			return;
 		}
 
@@ -134,6 +138,9 @@ export default function KonvaVideoLayer({
 		if (!videoEl || !isVideoPlaying) return;
 		let rafId;
 		const frame = () => {
+			if (effectsCacheRef.current?.needsFilters) {
+				effectsCacheRef.current.recache?.();
+			}
 			imageRef.current?.getLayer()?.batchDraw();
 			rafId = requestAnimationFrame(frame);
 		};
@@ -153,6 +160,8 @@ export default function KonvaVideoLayer({
 			mediaElement={videoEl}
 			placeholderFill={placeholderFill}
 			mediaImageRef={imageRef}
+			effectsCacheRef={effectsCacheRef}
+			previewTime={previewTime}
 			onSelect={onSelect}
 			onChange={onChange}
 			registerRef={registerRef}

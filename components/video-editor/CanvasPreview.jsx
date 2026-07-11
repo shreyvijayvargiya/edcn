@@ -18,6 +18,10 @@ import KonvaVideoLayer from "./KonvaVideoLayer";
 import KonvaMediaFrame from "./KonvaMediaFrame";
 import KonvaUiLayer from "./KonvaUiLayer";
 import InlineTextEditor from "./InlineTextEditor";
+import KonvaCaptionLayer, {
+	DemoClickRings,
+	applyDemoZoomToEffective,
+} from "./KonvaCaptionLayer";
 import { computeMotionState } from "@/lib/video-editor/motion";
 import { getCachedImage, loadKonvaImage } from "@/lib/video-editor/imageCache";
 
@@ -53,6 +57,7 @@ function KonvaImageLayer({
 	anim,
 	effective,
 	frameSwap,
+	previewTime = 0,
 	isSelected,
 	onSelect,
 	onChange,
@@ -72,6 +77,7 @@ function KonvaImageLayer({
 			mediaElement={image}
 			secondaryMediaElement={image2}
 			frameSwap={frameSwap}
+			previewTime={previewTime}
 			onSelect={onSelect}
 			onChange={onChange}
 			registerRef={registerRef}
@@ -294,8 +300,11 @@ function LayerNode({
 	const { data } = layer;
 	const altDrag = konvaAltDragHandlers(layer, interactive, onAltDragDuplicate);
 	const motionState = computeMotionState(layer, previewTime);
-	const effective = motionState.effective;
+	let effective = motionState.effective;
 	const frameSwap = motionState.frameSwap;
+	if (layer.type === "video") {
+		effective = applyDemoZoomToEffective(layer, previewTime, effective);
+	}
 	const anim = computeLayerAnimationState(layer, previewTime);
 	const isCenteredShape =
 		layer.type === "shape" &&
@@ -318,12 +327,13 @@ function LayerNode({
 
 	if (layer.type === "text") {
 		const displayText = isEditing ? data.content : (anim.displayText ?? data.content);
+		const textW = pos.width ?? layer.width;
 		return (
 			<Text
 				ref={registerRef}
 				x={x}
 				y={y}
-				width={layer.width}
+				width={textW}
 				text={displayText}
 				fontSize={data.fontSize}
 				fontFamily={data.fontFamily}
@@ -380,6 +390,7 @@ function LayerNode({
 				anim={anim}
 				effective={effective}
 				frameSwap={frameSwap}
+				previewTime={previewTime}
 				isSelected={isSelected}
 				onSelect={onSelect}
 				onChange={onChange}
@@ -400,6 +411,23 @@ function LayerNode({
 				previewTime={previewTime}
 				isVideoPlaying={isVideoPlaying}
 				audioUnlocked={audioUnlocked}
+				isSelected={isSelected}
+				onSelect={onSelect}
+				onChange={onChange}
+				registerRef={registerRef}
+				interactive={interactive}
+				onAltDragDuplicate={onAltDragDuplicate}
+			/>
+		);
+	}
+
+	if (layer.type === "caption") {
+		return (
+			<KonvaCaptionLayer
+				layer={layer}
+				anim={anim}
+				effective={effective}
+				previewTime={previewTime}
 				isSelected={isSelected}
 				onSelect={onSelect}
 				onChange={onChange}

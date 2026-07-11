@@ -10,6 +10,17 @@ import {
 import { FLEX_DIRECTIONS, FLEX_ALIGN } from "@/lib/video-editor/uiLayerStyle";
 import { getUiPresetById } from "@/lib/video-editor/uiComponents";
 import { EDITOR_ICONS } from "@/lib/video-editor/icons";
+import {
+	CAPTION_STYLE_PRESETS,
+	applyCaptionStylePreset,
+	estimateWordTimings,
+	wordsToPlainText,
+	exportCaptionsToSrt,
+	exportCaptionsToVtt,
+	parseSrtOrVtt,
+	downloadTextFile,
+	createCaptionWord,
+} from "@/lib/video-editor/captions";
 import { cn } from "@/lib/utils";
 import PropertySelect from "../PropertySelect";
 import {
@@ -122,6 +133,21 @@ function VideoContent({ layer, sceneId, dispatch }) {
 	const { data } = layer;
 	const patch = (d) =>
 		dispatch(updateLayerData({ sceneId, layerId: layer.id, data: d }));
+	const ann = data.demoAnnotations ?? { enabled: false, markers: [] };
+
+	const patchAnn = (next) =>
+		patch({
+			demoAnnotations: {
+				enabled: false,
+				cursorHighlight: true,
+				zoomToClick: true,
+				zoomScale: 1.35,
+				zoomDuration: 0.55,
+				markers: [],
+				...ann,
+				...next,
+			},
+		});
 
 	return (
 		<div className="space-y-2.5">
@@ -172,6 +198,52 @@ function VideoContent({ layer, sceneId, dispatch }) {
 					onChange={(v) => patch({ volume: v / 100 })}
 				/>
 			)}
+
+			<div className="space-y-2 rounded-md border border-border bg-muted/30 p-2">
+				<label className="flex items-center gap-2 cursor-pointer select-none">
+					<input
+						type="checkbox"
+						checked={Boolean(ann.enabled)}
+						onChange={(e) => patchAnn({ enabled: e.target.checked })}
+						className="h-3.5 w-3.5 rounded border-border accent-primary"
+					/>
+					<span className="text-[10px] font-semibold">Demo annotations</span>
+				</label>
+				{ann.enabled && (
+					<>
+						<label className="flex items-center gap-2 cursor-pointer select-none">
+							<input
+								type="checkbox"
+								checked={ann.cursorHighlight !== false}
+								onChange={(e) => patchAnn({ cursorHighlight: e.target.checked })}
+								className="h-3.5 w-3.5 rounded border-border accent-primary"
+							/>
+							<span className="text-[10px]">Click highlight rings</span>
+						</label>
+						<label className="flex items-center gap-2 cursor-pointer select-none">
+							<input
+								type="checkbox"
+								checked={ann.zoomToClick !== false}
+								onChange={(e) => patchAnn({ zoomToClick: e.target.checked })}
+								className="h-3.5 w-3.5 rounded border-border accent-primary"
+							/>
+							<span className="text-[10px]">Zoom to click</span>
+						</label>
+						<RangeField
+							label="Zoom scale"
+							value={Math.round((ann.zoomScale ?? 1.35) * 100)}
+							min={110}
+							max={200}
+							formatValue={(v) => `${v}%`}
+							onChange={(v) => patchAnn({ zoomScale: v / 100 })}
+						/>
+						<p className="text-[9px] text-muted-foreground">
+							{(ann.markers ?? []).length} click marker
+							{(ann.markers ?? []).length === 1 ? "" : "s"} from screen recording
+						</p>
+					</>
+				)}
+			</div>
 		</div>
 	);
 }
@@ -583,6 +655,208 @@ function AudioContent({ layer, sceneId, dispatch }) {
 	);
 }
 
+function CaptionContent({ layer, sceneId, dispatch }) {
+	const { data } = layer;
+	const patch = (d) =>
+		dispatch(updateLayerData({ sceneId, layerId: layer.id, data: d }));
+
+	const words = data.words ?? [];
+	const plain = wordsToPlainText(words);
+
+	const rebuildFromText = (text) => {
+		const next = estimateWordTimings(text, layer.clipDuration ?? 5);
+		patch({ words: next });
+	};
+
+	return (
+		<div className="space-y-2.5">
+			<Field label="Platform style">
+				<div className="grid grid-cols-2 gap-1">
+					{CAPTION_STYLE_PRESETS.map((s) => (
+						<Button
+							key={s.id}
+							type="button"
+							size="sm"
+							variant={data.styleId === s.id ? "default" : "outline"}
+							className="text-[10px] h-8 justify-start"
+							onClick={() => patch(applyCaptionStylePreset(data, s.id))}
+						>
+							{s.label}
+						</Button>
+					))}
+				</div>
+			</Field>
+
+			<label className="flex items-center gap-2 cursor-pointer select-none">
+				<input
+					type="checkbox"
+					checked={data.karaoke !== false}
+					onChange={(e) => patch({ karaoke: e.target.checked })}
+					className="h-3.5 w-3.5 rounded border-border accent-primary"
+				/>
+				<span className="text-[10px] font-semibold">Karaoke highlight</span>
+			</label>
+
+			<Field label="Caption text">
+				<Textarea
+					value={plain}
+					onChange={(e) => rebuildFromText(e.target.value)}
+					rows={4}
+					className="text-sm resize-none"
+					placeholder="Type or paste caption words…"
+				/>
+			</Field>
+
+			<div className="flex flex-wrap gap-1">
+				<Button
+					type="button"
+					size="sm"
+					variant="outline"
+					className="text-[10px] h-7"
+					onClick={() => {
+						const srt = exportCaptionsToSrt(words, data.wordsPerLine ?? 6);
+						downloadTextFile("captions.srt", srt, "application/x-subrip");
+					}}
+					disabled={!words.length}
+				>
+					Export SRT
+				</Button>
+				<Button
+					type="button"
+					size="sm"
+					variant="outline"
+					className="text-[10px] h-7"
+					onClick={() => {
+						const vtt = exportCaptionsToVtt(words, data.wordsPerLine ?? 6);
+						downloadTextFile("captions.vtt", vtt, "text/vtt");
+					}}
+					disabled={!words.length}
+				>
+					Export VTT
+				</Button>
+				<Button
+					type="button"
+					size="sm"
+					variant="outline"
+					className="text-[10px] h-7"
+					onClick={() => {
+						const input = document.createElement("input");
+						input.type = "file";
+						input.accept = ".srt,.vtt,text/vtt,application/x-subrip,text/plain";
+						input.onchange = async () => {
+							const file = input.files?.[0];
+							if (!file) return;
+							const text = await file.text();
+							const parsed = parseSrtOrVtt(text);
+							if (parsed.length) patch({ words: parsed });
+						};
+						input.click();
+					}}
+				>
+					Import SRT/VTT
+				</Button>
+			</div>
+
+			{words.length > 0 && (
+				<div className="max-h-36 space-y-1 overflow-y-auto rounded-md border border-border p-1.5">
+					{words.map((w) => (
+						<div key={w.id} className="grid grid-cols-[1fr_52px_52px] gap-1 items-center">
+							<Input
+								value={w.text}
+								className="h-7 text-xs"
+								onChange={(e) =>
+									patch({
+										words: words.map((x) =>
+											x.id === w.id ? { ...x, text: e.target.value } : x,
+										),
+									})
+								}
+							/>
+							<Input
+								type="number"
+								step={0.1}
+								value={Math.round(w.start * 10) / 10}
+								className="h-7 text-[10px]"
+								onChange={(e) =>
+									patch({
+										words: words.map((x) =>
+											x.id === w.id
+												? { ...x, start: Number(e.target.value) || 0 }
+												: x,
+										),
+									})
+								}
+							/>
+							<Input
+								type="number"
+								step={0.1}
+								value={Math.round(w.end * 10) / 10}
+								className="h-7 text-[10px]"
+								onChange={(e) =>
+									patch({
+										words: words.map((x) =>
+											x.id === w.id
+												? { ...x, end: Number(e.target.value) || 0 }
+												: x,
+										),
+									})
+								}
+							/>
+						</div>
+					))}
+				</div>
+			)}
+
+			{words.length === 0 && (
+				<Button
+					type="button"
+					size="sm"
+					variant="outline"
+					className="w-full text-[10px] h-8"
+					onClick={() =>
+						patch({
+							words: [
+								createCaptionWord("Your", 0, 0.4),
+								createCaptionWord("captions", 0.4, 0.9),
+								createCaptionWord("here", 0.9, 1.4),
+							],
+						})
+					}
+				>
+					Add sample words
+				</Button>
+			)}
+
+			<RangeField
+				label="Font size"
+				value={data.fontSize ?? 24}
+				min={12}
+				max={72}
+				onChange={(v) => patch({ fontSize: v })}
+			/>
+			<ColorField
+				label="Text color"
+				value={data.fill ?? "#ffffff"}
+				fallback="#ffffff"
+				onChange={(fill) => patch({ fill })}
+			/>
+			<ColorField
+				label="Highlight"
+				value={data.highlightFill ?? "#39E508"}
+				fallback="#39E508"
+				onChange={(highlightFill) => patch({ highlightFill })}
+			/>
+			<RangeField
+				label="Words per line"
+				value={data.wordsPerLine ?? 4}
+				min={2}
+				max={12}
+				onChange={(v) => patch({ wordsPerLine: v })}
+			/>
+		</div>
+	);
+}
+
 export function LayerContentSection({ layer, sceneId, dispatch }) {
 	const contentByType = {
 		text: <TextContent layer={layer} sceneId={sceneId} dispatch={dispatch} />,
@@ -592,6 +866,7 @@ export function LayerContentSection({ layer, sceneId, dispatch }) {
 		icon: <IconContent layer={layer} sceneId={sceneId} dispatch={dispatch} />,
 		ui: <UiContent layer={layer} sceneId={sceneId} dispatch={dispatch} />,
 		audio: <AudioContent layer={layer} sceneId={sceneId} dispatch={dispatch} />,
+		caption: <CaptionContent layer={layer} sceneId={sceneId} dispatch={dispatch} />,
 	};
 
 	const titles = {
@@ -602,6 +877,7 @@ export function LayerContentSection({ layer, sceneId, dispatch }) {
 		icon: "Icon",
 		ui: "UI component",
 		audio: "Source",
+		caption: "Captions",
 	};
 
 	return (

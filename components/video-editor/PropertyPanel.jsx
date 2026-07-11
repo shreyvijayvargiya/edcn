@@ -1,5 +1,5 @@
 import { useAppDispatch, useAppSelector } from "@/lib/store/hooks";
-import { updateLayer } from "@/lib/store/slices/videoEditorSlice";
+import { updateLayer, updateLayerData } from "@/lib/store/slices/videoEditorSlice";
 import {
 	PanelSection,
 	FrameSection,
@@ -10,6 +10,7 @@ import {
 } from "./property-panel/PropertyPanelSections";
 import { AdvancedMotionSection } from "./property-panel/AdvancedMotionSection";
 import CanvasProperties from "./property-panel/CanvasProperties";
+import EffectsSection from "./property-panel/EffectsSection";
 import {
 	LayerContentSection,
 	LayerAppearanceSection,
@@ -90,6 +91,15 @@ export default function PropertyPanel() {
 
 			{hasAppearance && (
 				<LayerAppearanceSection layer={layer} sceneId={activeSceneId} dispatch={dispatch} />
+			)}
+
+			{(layer.type === "image" || layer.type === "video") && (
+				<EffectsSection
+					data={layer.data}
+					patch={(d) =>
+						dispatch(updateLayerData({ sceneId: activeSceneId, layerId: layer.id, data: d }))
+					}
+				/>
 			)}
 
 			<TransformSection layer={layer} onPatch={patchLayer} />

@@ -13,6 +13,7 @@ import {
 	Library,
 	Sparkles,
 	LayoutTemplate,
+	Captions,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useAppDispatch, useAppSelector } from "@/lib/store/hooks";
@@ -20,6 +21,7 @@ import {
 	addLayer,
 	clearCommandLeftTab,
 	openRecordAudioModal,
+	openRecordScreenModal,
 	updateScene,
 } from "@/lib/store/slices/videoEditorSlice";
 import { CANVAS_WIDTH, CANVAS_HEIGHT } from "@/lib/video-editor/constants";
@@ -29,6 +31,14 @@ import {
 	loadImageDimensions,
 	fitImageOnCanvas,
 } from "@/lib/video-editor/stockImages";
+import {
+	applyCaptionStylePreset,
+	defaultCaptionData,
+	defaultCaptionPlacement,
+	estimateWordTimings,
+	parseSrtOrVtt,
+	createCaptionRecognizer,
+} from "@/lib/video-editor/captions";
 import { cn } from "@/lib/utils";
 import BackgroundPanel from "./BackgroundPanel";
 import { sceneBackgroundFromGradient } from "@/lib/video-editor/sceneBackground";
@@ -46,6 +56,8 @@ import { AudioPanel } from "./left-panel/AudioPanel";
 import { ShapesPanel } from "./left-panel/ShapesPanel";
 import { IconsPanel } from "./left-panel/IconsPanel";
 import { UiPanel } from "./left-panel/UiPanel";
+import { CaptionsPanel } from "./left-panel/CaptionsPanel";
+import { toast } from "sonner";
 
 const WORKSPACE_TABS = [
 	{ id: "workspace", label: "Projects", icon: Folder, activeIcon: FolderOpen },
@@ -56,6 +68,7 @@ const EDITOR_TABS = [
 	{ id: "ai", label: "AI", icon: Sparkles },
 	{ id: "ui", label: "UI", icon: LayoutTemplate },
 	{ id: "text", label: "Text", icon: Type },
+	{ id: "captions", label: "Captions", icon: Captions },
 	{ id: "image", label: "Image", icon: ImageIcon },
 	{ id: "video", label: "Video", icon: Video },
 	{ id: "audio", label: "Audio", icon: Music },
@@ -66,7 +79,9 @@ const EDITOR_TABS = [
 
 export default function LeftPanel() {
 	const dispatch = useAppDispatch();
-	const { activeSceneId, project, ui, recordedAudio } = useAppSelector((s) => s.videoEditor);
+	const { activeSceneId, project, ui, recordedAudio, recordedVideos } = useAppSelector(
+		(s) => s.videoEditor,
+	);
 	const commandLeftTab = ui?.leftTab;
 	const commandNonce = ui?.commandNonce ?? 0;
 	const activeScene = project.scenes.find((s) => s.id === activeSceneId);
@@ -327,6 +342,132 @@ export default function LeftPanel() {
 		dispatch(openRecordAudioModal({ insertAt: null }));
 	};
 
+	const openScreenRecordModal = () => {
+		dispatch(openRecordScreenModal({ insertAt: "end" }));
+	};
+
+	const addCaptionTrack = (styleId = "tiktok") => {
+		if (!activeSceneId) return;
+		const placement = defaultCaptionPlacement(canvasW, canvasH);
+		const data = applyCaptionStylePreset(defaultCaptionData(), styleId);
+		data.words = estimateWordTimings("Your captions go here", activeScene?.duration ?? 5);
+		dispatch(
+			addLayer({
+				sceneId: activeSceneId,
+				type: "caption",
+				data,
+				overrides: placement,
+			}),
+		);
+	};
+
+	const addCaptionFromTranscript = () => {
+		if (!activeSceneId) return;
+		const withTranscript = recordedAudio.find((t) => t.transcript?.trim());
+		const sceneAudio = activeScene?.layers?.find(
+			(l) => l.type === "audio" && l.data?.transcript?.trim(),
+		);
+		const transcript =
+			withTranscript?.transcript ||
+			sceneAudio?.data?.transcript ||
+			"";
+		if (!transcript) {
+			toast.message("No transcript found", {
+				description: "Record audio with speech recognition, then try again.",
+			});
+			return;
+		}
+		const duration =
+			withTranscript?.duration ||
+			sceneAudio?.clipDuration ||
+			activeScene?.duration ||
+			5;
+		const placement = defaultCaptionPlacement(canvasW, canvasH);
+		dispatch(
+			addLayer({
+				sceneId: activeSceneId,
+				type: "caption",
+				data: {
+					...applyCaptionStylePreset(defaultCaptionData(), "tiktok"),
+					words: estimateWordTimings(transcript, duration),
+				},
+				overrides: { ...placement, clipDuration: duration },
+			}),
+		);
+	};
+
+	const importCaptionFile = () => {
+		openFilePicker(".srt,.vtt,text/vtt,text/plain", async (file) => {
+			if (!activeSceneId) return;
+			const text = await file.text();
+			const words = parseSrtOrVtt(text);
+			if (!words.length) {
+				toast.error("Could not parse captions file");
+				return;
+			}
+			const end = words[words.length - 1]?.end ?? 5;
+			const placement = defaultCaptionPlacement(canvasW, canvasH);
+			dispatch(
+				addLayer({
+					sceneId: activeSceneId,
+					type: "caption",
+					data: {
+						...applyCaptionStylePreset(defaultCaptionData(), "youtube"),
+						words,
+					},
+					overrides: { ...placement, clipDuration: Math.max(1, end) },
+				}),
+			);
+		});
+	};
+
+	const startCaptionAsr = () => {
+		if (!activeSceneId) return;
+		let finalText = "";
+		const recognition = createCaptionRecognizer({
+			onFinal: (chunk) => {
+				finalText = `${finalText} ${chunk}`.trim();
+			},
+			onPartial: () => {},
+			onError: () => {
+				toast.error("Speech recognition unavailable");
+			},
+		});
+		if (!recognition) {
+			toast.error("Use Chrome or Edge for live caption dictation");
+			return;
+		}
+		toast.message("Listening…", { description: "Speak now. Click again when done — or wait 8s." });
+		try {
+			recognition.start();
+		} catch {
+			/* ignore */
+		}
+		setTimeout(() => {
+			try {
+				recognition.stop();
+			} catch {
+				/* ignore */
+			}
+			if (!finalText.trim()) {
+				toast.message("No speech captured");
+				return;
+			}
+			const placement = defaultCaptionPlacement(canvasW, canvasH);
+			dispatch(
+				addLayer({
+					sceneId: activeSceneId,
+					type: "caption",
+					data: {
+						...applyCaptionStylePreset(defaultCaptionData(), "reels"),
+						words: estimateWordTimings(finalText, 5),
+					},
+					overrides: placement,
+				}),
+			);
+		}, 8000);
+	};
+
 	const handleTabClick = (tab) => {
 		setActiveTab(tab.id);
 		setSearch("");
@@ -338,7 +479,8 @@ export default function LeftPanel() {
 		activeTab === "icon" ||
 		activeTab === "image" ||
 		activeTab === "video" ||
-		activeTab === "audio";
+		activeTab === "audio" ||
+		activeTab === "captions";
 
 	const renderTabButton = (tab, isActive) => {
 		const Icon = isActive && tab.activeIcon ? tab.activeIcon : tab.icon;
@@ -397,6 +539,8 @@ export default function LeftPanel() {
 											? "Search fonts and combinations"
 											: activeTab === "ui"
 												? "Search UI components"
+												: activeTab === "captions"
+													? "Search caption styles"
 												: activeTab === "image"
 												? "Search stock photos"
 												: activeTab === "video"
@@ -424,6 +568,15 @@ export default function LeftPanel() {
 						{activeTab === "text" && (
 							<TextPanel onAddText={addText} search={search} />
 						)}
+						{activeTab === "captions" && (
+							<CaptionsPanel
+								onAddCaption={addCaptionTrack}
+								onAddFromTranscript={addCaptionFromTranscript}
+								onImportFile={importCaptionFile}
+								onStartAsr={startCaptionAsr}
+								search={search}
+							/>
+						)}
 						{activeTab === "image" && (
 							<ImagePanel
 								onUpload={uploadImage}
@@ -435,6 +588,8 @@ export default function LeftPanel() {
 							<VideoPanel
 								onUpload={uploadVideo}
 								onAddStock={addStockVideo}
+								onRecordScreen={openScreenRecordModal}
+								recordedVideos={recordedVideos}
 								search={search}
 							/>
 						)}
