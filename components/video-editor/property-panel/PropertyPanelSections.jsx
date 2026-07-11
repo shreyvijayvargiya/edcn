@@ -676,6 +676,7 @@ export function LayerPanelHeader({ layer }) {
 		audio: "Audio",
 		shape: "Shape",
 		icon: "Icon",
+		ui: "UI",
 	};
 	return (
 		<div className="px-3 py-2.5 border-b border-border bg-muted/20">

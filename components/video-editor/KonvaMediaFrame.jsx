@@ -11,7 +11,12 @@ import {
 	clipRoundedRect,
 } from "@/lib/video-editor/imageLayout";
 import { layerAnimProps } from "@/lib/video-editor/animations";
-import { mediaElementSize } from "@/lib/video-editor/mediaLayerStyle";
+import { mediaElementSize, DEFAULT_MEDIA_LAYER_STYLE } from "@/lib/video-editor/mediaLayerStyle";
+import {
+	resolveLayerChrome,
+	konvaRingPad,
+	konvaShadowProps,
+} from "@/lib/video-editor/layerChromeStyle";
 
 /**
  * Shared frame (ring, border, clip, shadow, object-fit) for image & video layers.
@@ -44,11 +49,10 @@ export default function KonvaMediaFrame({
 		},
 	);
 
-	const borderRadius = data.borderRadius ?? 0;
-	const borderWidth = data.borderWidth ?? 0;
-	const ringWidth = data.ringWidth ?? 0;
-	const ringOffset = data.ringOffset ?? 4;
-	const ringPad = ringWidth > 0 ? ringOffset + ringWidth / 2 : 0;
+	const chrome = resolveLayerChrome(data, DEFAULT_MEDIA_LAYER_STYLE);
+	const { borderRadius, borderWidth, ringWidth, ringColor, ringRadius, borderColor, borderStyle } =
+		chrome;
+	const ringPad = konvaRingPad(chrome);
 
 	const size = mediaElementSize(mediaElement);
 	const draw = size
@@ -90,15 +94,7 @@ export default function KonvaMediaFrame({
 		node.scaleY(1);
 	};
 
-	const shadowProps =
-		(data.shadowBlur ?? 0) > 0
-			? {
-					shadowColor: data.shadowColor || "rgba(0,0,0,0.35)",
-					shadowBlur: data.shadowBlur,
-					shadowOffsetX: data.shadowOffsetX ?? 0,
-					shadowOffsetY: data.shadowOffsetY ?? 0,
-				}
-			: {};
+	const shadowProps = konvaShadowProps(chrome);
 
 	return (
 		<Group
@@ -124,8 +120,8 @@ export default function KonvaMediaFrame({
 					y={-ringPad}
 					width={layer.width + ringPad * 2}
 					height={layer.height + ringPad * 2}
-					cornerRadius={(data.ringRadius ?? borderRadius) + ringPad}
-					stroke={data.ringColor || "#ffffff"}
+					cornerRadius={(ringRadius ?? borderRadius) + ringPad}
+					stroke={ringColor || "#ffffff"}
 					strokeWidth={ringWidth}
 					fill="transparent"
 					listening={false}
@@ -178,9 +174,9 @@ export default function KonvaMediaFrame({
 					width={layer.width}
 					height={layer.height}
 					cornerRadius={borderRadius}
-					stroke={data.borderColor || "#ffffff"}
+					stroke={borderColor || "#ffffff"}
 					strokeWidth={borderWidth}
-					dash={borderDashForStyle(data.borderStyle ?? "solid")}
+					dash={borderDashForStyle(borderStyle ?? "solid")}
 					fill="transparent"
 					listening={false}
 				/>

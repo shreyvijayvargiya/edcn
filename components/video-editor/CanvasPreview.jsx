@@ -16,6 +16,7 @@ import { useStageRef } from "./StageRefContext";
 import CanvasHotkeys from "./CanvasHotkeys";
 import KonvaVideoLayer from "./KonvaVideoLayer";
 import KonvaMediaFrame from "./KonvaMediaFrame";
+import KonvaUiLayer from "./KonvaUiLayer";
 import InlineTextEditor from "./InlineTextEditor";
 import { computeMotionState } from "@/lib/video-editor/motion";
 import { getCachedImage, loadKonvaImage } from "@/lib/video-editor/imageCache";
@@ -295,9 +296,7 @@ function LayerNode({
 	const motionState = computeMotionState(layer, previewTime);
 	const effective = motionState.effective;
 	const frameSwap = motionState.frameSwap;
-	const anim = applyAnimation
-		? computeLayerAnimationState(layer, previewTime)
-		: computeLayerAnimationState(layer, Infinity);
+	const anim = computeLayerAnimationState(layer, previewTime);
 	const isCenteredShape =
 		layer.type === "shape" &&
 		(data.shape === "circle" || data.shape === "ellipse");
@@ -445,6 +444,22 @@ function LayerNode({
 		);
 	}
 
+	if (layer.type === "ui") {
+		return (
+			<KonvaUiLayer
+				layer={layer}
+				anim={anim}
+				effective={effective}
+				isSelected={isSelected}
+				onSelect={onSelect}
+				onChange={onChange}
+				registerRef={registerRef}
+				interactive={interactive}
+				onAltDragDuplicate={onAltDragDuplicate}
+			/>
+		);
+	}
+
 	if (layer.type === "shape") {
 		const isCentered = data.shape === "circle" || data.shape === "ellipse";
 		const common = {
@@ -540,9 +555,8 @@ export default function CanvasPreview() {
 		[activeScene, project.canvas, canvasW, canvasH],
 	);
 
-	const previewTime = playback.previewLocalTime ?? 0;
+	const previewTime = playback.previewLocalTime ?? playback.currentTime ?? 0;
 	const interactive = !playback.isPlaying && !playback.isRendering;
-	const applyAnimation = playback.isPlaying || playback.isRendering;
 	const isVideoPlaying = playback.isPlaying && !playback.isRendering;
 	const audioUnlocked = playback.audioUnlocked;
 
@@ -564,11 +578,10 @@ export default function CanvasPreview() {
 	const layers = useMemo(() => {
 		const all = activeScene?.layers ?? [];
 		if (!activeScene) return all;
-		if (interactive) return all;
 		return all.filter((layer) =>
 			isLayerActiveAtTime(layer, activeScene.duration, previewTime),
 		);
-	}, [activeScene, previewTime, interactive]);
+	}, [activeScene, previewTime]);
 
 	const editingLayer = useMemo(() => {
 		if (!editingLayerId || !activeScene) return null;
@@ -712,7 +725,7 @@ export default function CanvasPreview() {
 									layer={layer}
 									sceneDuration={activeScene?.duration ?? 5}
 									previewTime={previewTime}
-									applyAnimation={applyAnimation}
+									applyAnimation
 									isVideoPlaying={isVideoPlaying}
 									audioUnlocked={audioUnlocked}
 									isSelected={interactive && selectedLayerIds.includes(layer.id)}

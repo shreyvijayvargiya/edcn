@@ -37,10 +37,17 @@ export default function AudioPlaybackSync() {
 				audio.load();
 			}
 
+			audio.volume = Math.max(0, Math.min(1, layer.data?.volume ?? 1));
+			audio.muted = Boolean(layer.data?.muted);
+
 			const startTime = layer.startTime || 0;
 			const clipLocalTime = Math.max(0, previewTime - startTime);
 			const clipDur = getLayerClipDuration(layer, activeScene.duration);
-			const seekTo = Math.min(clipLocalTime, Math.max(0, clipDur - 0.05));
+			const mediaTrimStart = layer.data?.mediaTrimStart ?? 0;
+			const seekTo = Math.min(
+				mediaTrimStart + clipLocalTime,
+				Math.max(0, mediaTrimStart + clipDur - 0.05),
+			);
 
 			if (!shouldPlay) {
 				audio.pause();

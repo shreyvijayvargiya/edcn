@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { flushSync } from "react-dom";
 import {
 	Undo2,
 	Redo2,
@@ -30,7 +31,6 @@ import FrameDimensionSelect from "./FrameDimensionSelect";
 import ThemeToggle from "@/components/theme/ThemeToggle";
 import PreviewVideoModal from "./PreviewVideoModal";
 import ExportMenu from "./ExportMenu";
-import CommandSearch from "./CommandSearch";
 
 export default function Toolbar({ onOpenCommandSearch }) {
 	const dispatch = useAppDispatch();
@@ -58,8 +58,11 @@ export default function Toolbar({ onOpenCommandSearch }) {
 			const { blob, ext } = await renderProjectExport(
 				stageRef,
 				project,
-				(globalTime, sceneId, localTime) =>
-					dispatch(setCurrentTime({ globalTime, sceneId, localTime })),
+				(globalTime, sceneId, localTime) => {
+					flushSync(() => {
+						dispatch(setCurrentTime({ globalTime, sceneId, localTime }));
+					});
+				},
 				{
 					format,
 					startTime: format === "gif" ? gifStart : 0,
@@ -68,7 +71,9 @@ export default function Toolbar({ onOpenCommandSearch }) {
 			);
 			downloadBlob(blob, exportFilename(project.name, ext));
 		} catch (err) {
-			alert(err?.message || "Export failed.");
+			if (err?.name !== "AbortError") {
+				alert(err?.message || "Export failed.");
+			}
 		} finally {
 			dispatch(setRendering(false));
 			dispatch(setPlaying(false));

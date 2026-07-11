@@ -12,6 +12,7 @@ import EditorHistoryHotkeys from "./EditorHistoryHotkeys";
 import EditorLayerHotkeys from "./EditorLayerHotkeys";
 import { useEditorPanelSizes } from "@/lib/video-editor/useEditorPanelSizes";
 import CommandSearch from "./CommandSearch";
+import RecordAudioModal from "./RecordAudioModal";
 
 export default function EditorLayout() {
 	const [leftOpen, setLeftOpen] = useState(false);
@@ -31,6 +32,7 @@ export default function EditorLayout() {
 			<AudioPlaybackSync />
 			<EditorHistoryHotkeys />
 			<EditorLayerHotkeys />
+			<RecordAudioModal />
 			<CommandSearch
 				open={commandOpen}
 				onOpenChange={setCommandOpen}

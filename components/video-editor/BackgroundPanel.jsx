@@ -6,7 +6,6 @@ import {
 	DEFAULT_FG,
 } from "@/lib/video-editor/backgroundPatterns";
 import {
-	sceneBackgroundFromGradient,
 	sceneBackgroundFromPattern,
 } from "@/lib/video-editor/sceneBackground";
 import { cn } from "@/lib/utils";
@@ -96,5 +95,3 @@ export default function BackgroundPanel({ scene, onApplyGradient, onApplyPattern
 		</div>
 	);
 }
-
-export { sceneBackgroundFromGradient };

@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { getLayerClipDuration } from "@/lib/video-editor/timeline";
+import {
+	registerExportVideo,
+	unregisterExportVideo,
+} from "@/lib/video-editor/exportMedia";
 import KonvaMediaFrame from "./KonvaMediaFrame";
 
 /**
@@ -77,10 +81,31 @@ export default function KonvaVideoLayer({
 	}, [videoEl, shouldMute, volume]);
 
 	useEffect(() => {
+		if (!videoEl) return undefined;
+
+		const getMediaTime = (previewTimeSec) => {
+			const dur = Number.isFinite(videoEl.duration) ? videoEl.duration : clipDuration;
+			const mediaTrimStart = layer.data?.mediaTrimStart ?? 0;
+			const local = Math.max(0, previewTimeSec - startTime);
+			return Math.min(
+				Math.max(0, mediaTrimStart + local),
+				Math.max(0, dur - 0.05),
+			);
+		};
+
+		registerExportVideo(layer.id, videoEl, getMediaTime);
+		return () => unregisterExportVideo(layer.id);
+	}, [videoEl, layer.id, layer.data?.mediaTrimStart, startTime, clipDuration]);
+
+	useEffect(() => {
 		if (!videoEl) return;
 
 		const dur = Number.isFinite(videoEl.duration) ? videoEl.duration : clipDuration;
-		const seekTo = Math.min(Math.max(0, clipLocalTime), Math.max(0, dur - 0.05));
+		const mediaTrimStart = layer.data?.mediaTrimStart ?? 0;
+		const seekTo = Math.min(
+			Math.max(0, mediaTrimStart + clipLocalTime),
+			Math.max(0, dur - 0.05),
+		);
 
 		if (!isVideoPlaying) {
 			videoEl.pause();
@@ -103,7 +128,7 @@ export default function KonvaVideoLayer({
 			}
 		}
 		videoEl.play().catch(() => {});
-	}, [videoEl, isVideoPlaying, clipLocalTime, clipDuration, shouldMute]);
+	}, [videoEl, isVideoPlaying, clipLocalTime, clipDuration, shouldMute, layer.data?.mediaTrimStart]);
 
 	useEffect(() => {
 		if (!videoEl || !isVideoPlaying) return;

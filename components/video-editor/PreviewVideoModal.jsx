@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2, Play, RotateCcw, Download } from "lucide-react";
+import { flushSync } from "react-dom";
+import { Loader2, Play, RotateCcw, Download, X } from "lucide-react";
 import {
 	Dialog,
 	DialogContent,
@@ -24,10 +25,46 @@ import { useStageRef } from "./StageRefContext";
 import ExportFormatControls from "./ExportFormatControls";
 import { cn } from "@/lib/utils";
 
+/** Survives modal close — only invalidated when previewContentVersion / format changes. */
+let previewCache = {
+	key: null,
+	url: null,
+	ext: null,
+};
+
+function buildPreviewCacheKey(contentVersion, format, gifStart, gifEnd) {
+	const range =
+		format === "gif" ? `${Number(gifStart) || 0}:${Number(gifEnd) || 0}` : "-";
+	return `v${contentVersion}|${format}|${range}`;
+}
+
+function storePreviewCache(key, blob, ext) {
+	if (previewCache.url) {
+		URL.revokeObjectURL(previewCache.url);
+	}
+	const url = URL.createObjectURL(blob);
+	previewCache = { key, url, ext };
+	return url;
+}
+
+function progressLabel(progress) {
+	if (!progress) return "Preparing…";
+	if (progress.phase === "preparing") return "Preparing media…";
+	if (progress.phase === "finalizing") return "Finalizing…";
+	if (progress.phase === "done") return "Done";
+	const pct = Math.round((progress.progress ?? 0) * 100);
+	if (progress.totalFrames) {
+		return `Encoding ${progress.frame}/${progress.totalFrames} · ${pct}%`;
+	}
+	return `Encoding · ${pct}%`;
+}
+
 export default function PreviewVideoModal({ open, onOpenChange }) {
 	const dispatch = useAppDispatch();
 	const stageRef = useStageRef();
-	const { project, playback } = useAppSelector((s) => s.videoEditor);
+	const { project, playback, previewContentVersion } = useAppSelector(
+		(s) => s.videoEditor,
+	);
 	const canvasW = project.canvas?.width ?? 360;
 	const canvasH = project.canvas?.height ?? 640;
 	const totalDuration = getTotalDuration(project.scenes);
@@ -38,87 +75,150 @@ export default function PreviewVideoModal({ open, onOpenChange }) {
 	const [previewUrl, setPreviewUrl] = useState(null);
 	const [previewExt, setPreviewExt] = useState("mp4");
 	const [loading, setLoading] = useState(false);
+	const [progress, setProgress] = useState(null);
 	const [error, setError] = useState(null);
+	const [fromCache, setFromCache] = useState(false);
 	const videoRef = useRef(null);
 	const renderTokenRef = useRef(0);
-	const previewUrlRef = useRef(null);
+	const abortRef = useRef(null);
+	const projectRef = useRef(project);
+	projectRef.current = project;
 
-	const clearPreviewUrl = useCallback(() => {
-		if (previewUrlRef.current) {
-			URL.revokeObjectURL(previewUrlRef.current);
-			previewUrlRef.current = null;
-		}
-		setPreviewUrl(null);
+	const cacheKey = buildPreviewCacheKey(
+		previewContentVersion,
+		format,
+		gifStart,
+		gifEnd,
+	);
+
+	const cancelRender = useCallback(() => {
+		abortRef.current?.abort();
+		abortRef.current = null;
+		renderTokenRef.current += 1;
+		setLoading(false);
+		setProgress(null);
+		dispatch(setRendering(false));
+		dispatch(setPlaying(false));
+	}, [dispatch]);
+
+	const showCached = useCallback((key) => {
+		if (previewCache.key !== key || !previewCache.url) return false;
+		setPreviewUrl(previewCache.url);
+		setPreviewExt(previewCache.ext || "mp4");
+		setError(null);
+		setLoading(false);
+		setProgress(null);
+		setFromCache(true);
+		return true;
 	}, []);
 
-	const renderPreview = useCallback(async () => {
-		if (!stageRef?.current) {
-			setError("Canvas not ready — wait for the editor to load.");
-			return;
-		}
-
-		const token = ++renderTokenRef.current;
-		setLoading(true);
-		setError(null);
-		clearPreviewUrl();
-
-		dispatch(setPlaying(false));
-		dispatch(setRendering(true));
-
-		try {
-			const { blob, ext } = await renderProjectExport(
-				stageRef,
-				project,
-				(globalTime, sceneId, localTime) =>
-					dispatch(setCurrentTime({ globalTime, sceneId, localTime })),
-				{
-					format,
-					startTime: format === "gif" ? gifStart : 0,
-					endTime: format === "gif" ? gifEnd : undefined,
-				},
-			);
-
-			if (token !== renderTokenRef.current) return;
-
-			const url = URL.createObjectURL(blob);
-			previewUrlRef.current = url;
-			setPreviewExt(ext);
-			setPreviewUrl(url);
-		} catch (err) {
-			if (token !== renderTokenRef.current) return;
-			setError(err?.message || "Preview render failed.");
-		} finally {
-			if (token === renderTokenRef.current) {
-				setLoading(false);
-				dispatch(setRendering(false));
-				dispatch(setPlaying(false));
+	const encodePreview = useCallback(
+		async (key) => {
+			if (!stageRef?.current) {
+				setError("Canvas not ready — wait for the editor to load.");
+				return;
 			}
-		}
-	}, [dispatch, project, clearPreviewUrl, stageRef, format, gifStart, gifEnd]);
 
+			abortRef.current?.abort();
+			const controller = new AbortController();
+			abortRef.current = controller;
+
+			const token = ++renderTokenRef.current;
+			const projectSnapshot = projectRef.current;
+			const useFormat = format;
+			const rangeStart = useFormat === "gif" ? gifStart : 0;
+			const rangeEnd = useFormat === "gif" ? gifEnd : undefined;
+
+			setLoading(true);
+			setProgress({ phase: "preparing", progress: 0 });
+			setError(null);
+			setFromCache(false);
+			setPreviewUrl(null);
+
+			dispatch(setPlaying(false));
+			dispatch(setRendering(true));
+
+			try {
+				const { blob, ext } = await renderProjectExport(
+					stageRef,
+					projectSnapshot,
+					(globalTime, sceneId, localTime) => {
+						flushSync(() => {
+							dispatch(setCurrentTime({ globalTime, sceneId, localTime }));
+						});
+					},
+					{
+						format: useFormat,
+						startTime: rangeStart,
+						endTime: rangeEnd,
+						signal: controller.signal,
+						onProgress: (p) => {
+							if (token === renderTokenRef.current) setProgress(p);
+						},
+					},
+				);
+
+				if (token !== renderTokenRef.current) return;
+
+				const url = storePreviewCache(key, blob, ext);
+				setPreviewExt(ext);
+				setPreviewUrl(url);
+				setFromCache(false);
+			} catch (err) {
+				if (token !== renderTokenRef.current) return;
+				if (err?.name === "AbortError") {
+					setError(null);
+					showCached(key);
+				} else {
+					setError(err?.message || "Preview render failed.");
+				}
+			} finally {
+				if (token === renderTokenRef.current) {
+					setLoading(false);
+					setProgress(null);
+					dispatch(setRendering(false));
+					dispatch(setPlaying(false));
+				}
+				if (abortRef.current === controller) abortRef.current = null;
+			}
+		},
+		[dispatch, stageRef, format, gifStart, gifEnd, showCached],
+	);
+
+	/** Only encode when cache is missing/stale — never because the modal toggled. */
+	const ensurePreview = useCallback(
+		(force = false) => {
+			if (!force && showCached(cacheKey)) return;
+			encodePreview(cacheKey);
+		},
+		[cacheKey, showCached, encodePreview],
+	);
+
+	// Modal opened OR content/format changed while open → ensure preview
 	useEffect(() => {
 		if (!open) return;
-		renderPreview();
-		// Re-render when modal opens or format changes; GIF range uses Re-render button
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [open, format]);
+		ensurePreview(false);
+	}, [open, cacheKey, ensurePreview]);
+
+	// Modal closed → abort in-flight encode, keep cache
+	useEffect(() => {
+		if (open) return;
+		abortRef.current?.abort();
+		abortRef.current = null;
+		renderTokenRef.current += 1;
+		setLoading(false);
+		setProgress(null);
+		setError(null);
+		videoRef.current?.pause();
+		dispatch(setRendering(false));
+		dispatch(setPlaying(false));
+	}, [open, dispatch]);
 
 	useEffect(() => {
 		if (open && totalDuration > 0 && gifEnd > totalDuration) {
 			setGifEnd(totalDuration);
 		}
 	}, [open, totalDuration, gifEnd]);
-
-	useEffect(() => {
-		if (open) return;
-		renderTokenRef.current += 1;
-		setLoading(false);
-		setError(null);
-		clearPreviewUrl();
-		videoRef.current?.pause();
-		dispatch(setRendering(false));
-		dispatch(setPlaying(false));
-	}, [open, clearPreviewUrl, dispatch]);
 
 	const displayScale = (() => {
 		if (typeof window === "undefined") return 1;
@@ -130,14 +230,22 @@ export default function PreviewVideoModal({ open, onOpenChange }) {
 	const displayW = Math.round(canvasW * displayScale);
 	const displayH = Math.round(canvasH * displayScale);
 	const isGif = previewExt === "gif" || format === "gif";
+	const pct = Math.round((progress?.progress ?? 0) * 100);
 
 	return (
-		<Dialog open={open} onOpenChange={onOpenChange}>
+		<Dialog
+			open={open}
+			onOpenChange={(next) => {
+				if (!next && loading) cancelRender();
+				onOpenChange(next);
+			}}
+		>
 			<DialogContent className="sm:max-w-none w-auto max-w-[calc(100vw-1.5rem)]">
 				<DialogHeader>
 					<DialogTitle>Export preview</DialogTitle>
 					<DialogDescription>
-						Rendered at {canvasW} × {canvasH}px — choose format below
+						Rendered at {canvasW} × {canvasH}px — re-encodes only when the project
+						changes
 					</DialogDescription>
 				</DialogHeader>
 
@@ -161,18 +269,33 @@ export default function PreviewVideoModal({ open, onOpenChange }) {
 						style={{ width: displayW, height: displayH }}
 					>
 						{loading && (
-							<div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-background/80 text-muted-foreground z-10">
+							<div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background/85 text-muted-foreground z-10 px-6">
 								<Loader2 className="h-8 w-8 animate-spin text-primary" />
-								<span className="text-xs font-medium">
-									Rendering {format.toUpperCase()}…
+								<span className="text-xs font-medium text-center">
+									{progressLabel(progress)}
 								</span>
+								<div className="w-full max-w-[200px] h-1.5 rounded-full bg-muted overflow-hidden">
+									<div
+										className="h-full bg-primary transition-[width] duration-150 ease-out"
+										style={{ width: `${Math.max(2, pct)}%` }}
+									/>
+								</div>
+								<Button
+									size="sm"
+									variant="outline"
+									className="h-7 gap-1 mt-1"
+									onClick={cancelRender}
+								>
+									<X className="h-3.5 w-3.5" />
+									Cancel
+								</Button>
 							</div>
 						)}
 
 						{error && !loading && (
 							<div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-4 text-center z-10">
 								<p className="text-sm text-destructive">{error}</p>
-								<Button size="sm" variant="outline" onClick={renderPreview}>
+								<Button size="sm" variant="outline" onClick={() => ensurePreview(true)}>
 									<RotateCcw className="h-4 w-4" />
 									Retry
 								</Button>
@@ -204,6 +327,7 @@ export default function PreviewVideoModal({ open, onOpenChange }) {
 					<div className="flex flex-wrap items-center justify-center gap-2">
 						<span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground tabular-nums">
 							{canvasW} × {canvasH} · {format.toUpperCase()}
+							{fromCache ? " · cached" : ""}
 						</span>
 						{previewUrl && !loading && !isGif && (
 							<Button
@@ -226,7 +350,7 @@ export default function PreviewVideoModal({ open, onOpenChange }) {
 							size="sm"
 							variant="outline"
 							className="h-8"
-							onClick={renderPreview}
+							onClick={() => ensurePreview(true)}
 							disabled={loading || playback.isRendering}
 						>
 							<RotateCcw className="h-3.5 w-3.5" />
